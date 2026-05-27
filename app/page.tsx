@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
+import RoutineSection from '../components/RoutineSection'
 
 type Chore = {
   id: string
@@ -21,6 +22,12 @@ type Completion = {
   chores: { points: number } | { points: number }[] | null
 }
 
+type Assignment = {
+  chore_id: string
+  family_member_id: string
+  chores: Chore | Chore[] | null
+}
+
 export default function Home() {
   const [chores, setChores] = useState<Chore[]>([])
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([])
@@ -35,30 +42,51 @@ export default function Home() {
     try {
       const today = new Date().toISOString().split('T')[0]
 
-      const { data: choresData, error: choresError } = await supabase
-        .from('chores')
-        .select('id, title, points')
-        .eq('active', true)
-
       const { data: membersData, error: membersError } = await supabase
         .from('family_members')
         .select('id, name, avatar_emoji')
+
+      if (membersError) console.error('Members error:', membersError)
+
+      const safeMembers = membersData || []
+      const activeMember = selectedMember || safeMembers[0]?.id || ''
+
+      if (!selectedMember && activeMember) {
+        setSelectedMember(activeMember)
+      }
+
+      const { data: assignmentData, error: assignmentError } = await supabase
+        .from('chore_assignments')
+        .select(`
+          chore_id,
+          family_member_id,
+          chores (
+            id,
+            title,
+            points
+          )
+        `)
+        .eq('family_member_id', activeMember)
+
+      if (assignmentError) console.error('Assignment error:', assignmentError)
+
+      const mappedChores =
+        assignmentData
+          ?.map((assignment: Assignment) => assignment.chores)
+          .flat()
+          .filter(Boolean) || []
 
       const { data: completedData, error: completedError } = await supabase
         .from('chore_completions')
         .select('chore_id, completed_by, chores(points)')
         .gte('completed_at', today)
 
-      if (choresError) console.error('Chores error:', choresError)
-      if (membersError) console.error('Members error:', membersError)
       if (completedError) console.error('Completions error:', completedError)
 
-      const safeMembers = membersData || []
       const safeCompletions = completedData || []
 
-      setChores(choresData || [])
       setFamilyMembers(safeMembers)
-      setSelectedMember((current) => current || safeMembers[0]?.id || '')
+      setChores(mappedChores)
 
       setCompleted(
         safeCompletions
@@ -131,73 +159,134 @@ export default function Home() {
 
   useEffect(() => {
     loadData()
-  }, [])
+  }, [selectedMember])
 
   return (
     <main className="min-h-screen bg-slate-100 p-6 text-slate-900">
-      <h1 className="mb-6 text-4xl font-bold">Family Hub</h1>
+      <div className="mx-auto max-w-7xl">
+        <h1 className="mb-6 text-5xl font-bold tracking-tight">
+          Family Hub
+        </h1>
 
-      <section className="mb-6 rounded-2xl bg-white p-6 shadow">
-        <h2 className="mb-4 text-2xl font-semibold">Today&apos;s Points</h2>
+        <section className="mb-6 rounded-3xl bg-white p-6 shadow-sm">
+          <h2 className="mb-5 text-2xl font-semibold">
+            Today&apos;s Points
+          </h2>
 
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          {familyMembers.map((member) => (
-            <div key={member.id} className="rounded-xl border bg-white p-4 text-center">
-              <div className="text-3xl">{member.avatar_emoji || '🙂'}</div>
-              <div className="text-lg font-medium">{member.name}</div>
-              <div className="text-2xl font-bold">{points[member.id] || 0}</div>
-            </div>
-          ))}
-        </div>
-      </section>
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+            {familyMembers.map((member) => (
+              <div
+                key={member.id}
+                className="rounded-2xl border border-slate-200 bg-slate-50 p-5 text-center"
+              >
+                <div className="mb-2 text-5xl">
+                  {member.avatar_emoji || '🙂'}
+                </div>
 
-      <section className="mb-6 rounded-2xl bg-white p-6 shadow">
-        <h2 className="mb-4 text-2xl font-semibold">Who&apos;s doing chores?</h2>
+                <div className="text-lg font-medium">
+                  {member.name}
+                </div>
 
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          {familyMembers.map((member) => (
-            <button
-              key={member.id}
-              onClick={() => setSelectedMember(member.id)}
-              className={`rounded-xl border p-4 text-xl ${
-                selectedMember === member.id
-                  ? 'border-blue-500 bg-blue-100'
-                  : 'bg-white'
-              }`}
-            >
-              <div className="text-3xl">{member.avatar_emoji || '🙂'}</div>
-              <div>{member.name}</div>
-            </button>
-          ))}
-        </div>
-      </section>
+                <div className="mt-2 text-4xl font-bold text-blue-600">
+                  {points[member.id] || 0}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
 
-      <section className="rounded-2xl bg-white p-6 shadow">
-        <h2 className="mb-4 text-2xl font-semibold">Today&apos;s Chores</h2>
+        <section className="mb-6 rounded-3xl bg-white p-6 shadow-sm">
+          <h2 className="mb-5 text-2xl font-semibold">
+            Who&apos;s doing chores?
+          </h2>
 
-        {loading && <p>Loading...</p>}
-
-        <div className="space-y-3">
-          {chores.map((chore) => {
-            const isComplete = completed.includes(`${chore.id}:${selectedMember}`)
-
-            return (
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+            {familyMembers.map((member) => (
               <button
-                key={chore.id}
-                onClick={() => completeChore(chore.id)}
-                className={`w-full rounded-xl border p-4 text-left text-xl transition ${
-                  isComplete
-                    ? 'border-green-400 bg-green-100 opacity-80'
-                    : 'bg-white hover:bg-slate-50'
+                key={member.id}
+                onClick={() => setSelectedMember(member.id)}
+                className={`rounded-2xl border p-5 text-center transition-all ${
+                  selectedMember === member.id
+                    ? 'border-blue-500 bg-blue-100 shadow-sm'
+                    : 'border-slate-200 bg-white hover:bg-slate-50'
                 }`}
               >
-                <div>{isComplete ? '✅' : '⬜'} {chore.title}</div>
-                <div className="text-sm text-slate-500">{chore.points} points</div>
+                <div className="mb-2 text-5xl">
+                  {member.avatar_emoji || '🙂'}
+                </div>
+
+                <div className="text-xl font-medium">
+                  {member.name}
+                </div>
               </button>
-            )
-          })}
+            ))}
+          </div>
+        </section>
+
+        <div className="grid gap-6 lg:grid-cols-2">
+          <section className="rounded-3xl bg-white p-6 shadow-sm">
+            <h2 className="mb-5 text-3xl font-semibold">
+              Today&apos;s Chores
+            </h2>
+
+            {loading && (
+              <p className="text-slate-500">
+                Loading chores...
+              </p>
+            )}
+
+            {!loading && chores.length === 0 && (
+              <p className="text-slate-500">
+                No chores assigned
+              </p>
+            )}
+
+            <div className="space-y-3">
+              {chores.map((chore) => {
+                const isComplete = completed.includes(
+                  `${chore.id}:${selectedMember}`
+                )
+
+                return (
+                  <button
+                    key={chore.id}
+                    onClick={() => completeChore(chore.id)}
+                    className={`flex w-full items-center justify-between rounded-2xl border p-5 text-left transition-all ${
+                      isComplete
+                        ? 'border-green-300 bg-green-100'
+                        : 'border-slate-200 bg-white hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="text-3xl">
+                        {isComplete ? '✅' : '⬜'}
+                      </div>
+
+                      <div>
+                        <div className="text-xl font-medium">
+                          {chore.title}
+                        </div>
+
+                        <div className="mt-1 text-sm text-slate-500">
+                          {chore.points} points
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </section>
+
+          <section className="rounded-3xl bg-white p-6 shadow-sm">
+            <h2 className="mb-5 text-3xl font-semibold">
+              Routines
+            </h2>
+
+            <RoutineSection selectedMember={selectedMember} />
+          </section>
         </div>
-      </section>
+      </div>
     </main>
   )
 }
