@@ -9,6 +9,7 @@ type Props = {
 
 type RoutineStep = {
   id: string
+  routine_id: string
   title: string
   step_order: number
   routines: { title: string } | { title: string }[] | null
@@ -32,17 +33,18 @@ export default function RoutineSection({ selectedMember }: Props) {
     try {
       const today = new Date().toISOString().split('T')[0]
 
-      const { data: stepData, error: stepError } = await supabase
-        .from('routine_steps')
-        .select(`
-          id,
-          title,
-          step_order,
-          routines (
-            title
-          )
-        `)
-        .order('step_order')
+const { data: stepData, error: stepError } = await supabase
+  .from('routine_steps')
+  .select(`
+    id,
+    title,
+    step_order,
+    routines (
+      title,
+      time_of_day
+    )
+  `)
+  .order('step_order')
 
       const { data: completionData, error: completionError } = await supabase
         .from('routine_step_completions')
@@ -54,6 +56,7 @@ export default function RoutineSection({ selectedMember }: Props) {
       if (completionError) console.error('Routine completions error:', completionError)
 
       setSteps(stepData || [])
+	  console.log('Routine steps:', stepData)
 
       setCompleted(
         completionData?.map(
@@ -108,7 +111,11 @@ export default function RoutineSection({ selectedMember }: Props) {
     loadRoutineData()
   }, [selectedMember])
 
-  const grouped = steps.reduce((acc, step) => {
+const visibleSteps = steps.filter((step) => {
+  const key = `${step.id}:${selectedMember}`
+  return !completed.includes(key)
+})
+const grouped = visibleSteps.reduce((acc, step) => {
     const routineName = Array.isArray(step.routines)
   ? step.routines[0]?.title || 'Routine'
   : step.routines?.title || 'Routine'
@@ -127,8 +134,14 @@ export default function RoutineSection({ selectedMember }: Props) {
       {loading && <p>Loading routines...</p>}
 
       {!loading && steps.length === 0 && (
-        <p>No routine steps found</p>
-      )}
+  <p>No routine steps found</p>
+)}
+
+{!loading && steps.length > 0 && visibleSteps.length === 0 && (
+  <p className="text-slate-500">
+    All routine steps done for today 🎉
+  </p>
+)}
 
       {Object.entries(grouped).map(([routineName, routineSteps]) => (
         <div key={routineName}>
