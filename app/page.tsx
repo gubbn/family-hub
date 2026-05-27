@@ -47,7 +47,9 @@ export default function Home() {
         .from('family_members')
         .select('id, name, avatar_emoji')
 
-      if (membersError) console.error('Members error:', membersError)
+      if (membersError) {
+        console.error('Members error:', membersError)
+      }
 
       const safeMembers = membersData || []
       const activeMember = selectedMember || safeMembers[0]?.id || ''
@@ -69,24 +71,27 @@ export default function Home() {
         `)
         .eq('family_member_id', activeMember)
 
-      if (assignmentError) console.error('Assignment error:', assignmentError)
+      if (assignmentError) {
+        console.error('Assignment error:', assignmentError)
+      }
 
       const mappedChores: Chore[] =
-  assignmentData
-    ?.flatMap((assignment: Assignment) => {
-      if (!assignment.chores) return []
+        assignmentData?.flatMap((assignment: Assignment) => {
+          if (!assignment.chores) return []
 
-      return Array.isArray(assignment.chores)
-        ? assignment.chores
-        : [assignment.chores]
-    }) || []
+          return Array.isArray(assignment.chores)
+            ? assignment.chores
+            : [assignment.chores]
+        }) || []
 
       const { data: completedData, error: completedError } = await supabase
         .from('chore_completions')
         .select('chore_id, completed_by, chores(points)')
         .gte('completed_at', today)
 
-      if (completedError) console.error('Completions error:', completedError)
+      if (completedError) {
+        console.error('Completions error:', completedError)
+      }
 
       const safeCompletions = completedData || []
 
@@ -95,8 +100,14 @@ export default function Home() {
 
       setCompleted(
         safeCompletions
-          .filter((completion) => completion.chore_id && completion.completed_by)
-          .map((completion) => `${completion.chore_id}:${completion.completed_by}`)
+          .filter(
+            (completion) =>
+              completion.chore_id && completion.completed_by
+          )
+          .map(
+            (completion) =>
+              `${completion.chore_id}:${completion.completed_by}`
+          )
       )
 
       const totals: Record<string, number> = {}
@@ -128,6 +139,7 @@ export default function Home() {
 
     const today = new Date().toISOString().split('T')[0]
     const completionKey = `${choreId}:${selectedMember}`
+
     const isAlreadyComplete = completed.includes(completionKey)
 
     if (isAlreadyComplete) {
@@ -162,6 +174,44 @@ export default function Home() {
     await loadData()
   }
 
+async function resetTodayChores() {
+  if (!selectedMember) return
+
+  const today = new Date().toISOString().split('T')[0]
+
+  const { error } = await supabase
+    .from('chore_completions')
+    .delete()
+    .eq('completed_by', selectedMember)
+    .gte('completed_at', today)
+
+  if (error) {
+    console.error('Reset chores error:', error)
+    return
+  }
+
+  await loadData()
+}
+
+async function resetTodayRoutines() {
+  if (!selectedMember) return
+
+  const today = new Date().toISOString().split('T')[0]
+
+  const { error } = await supabase
+    .from('routine_step_completions')
+    .delete()
+    .eq('family_member_id', selectedMember)
+    .gte('completed_at', today)
+
+  if (error) {
+    console.error('Reset routines error:', error)
+    return
+  }
+
+  await loadData()
+}
+
   useEffect(() => {
     loadData()
   }, [selectedMember])
@@ -169,7 +219,8 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-slate-100 p-6 text-slate-900">
       <div className="mx-auto max-w-7xl">
-	  <NavBar />
+        <NavBar />
+
         <h1 className="mb-6 text-5xl font-bold tracking-tight">
           Family Hub
         </h1>
@@ -228,6 +279,30 @@ export default function Home() {
             ))}
           </div>
         </section>
+
+        <section className="mb-6 rounded-3xl bg-white p-4 shadow-sm">
+  <div className="flex flex-wrap items-center justify-between gap-3">
+    <p className="text-sm text-slate-500">
+      Need to start this person&apos;s day again?
+    </p>
+
+    <div className="flex flex-wrap gap-2">
+      <button
+        onClick={resetTodayChores}
+        className="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50"
+      >
+        Reset their chores
+      </button>
+
+      <button
+        onClick={resetTodayRoutines}
+        className="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50"
+      >
+        Reset their routines
+      </button>
+    </div>
+  </div>
+</section>
 
         <div className="grid gap-6 lg:grid-cols-2">
           <section className="rounded-3xl bg-white p-6 shadow-sm">
@@ -289,7 +364,9 @@ export default function Home() {
               Routines
             </h2>
 
-            <RoutineSection selectedMember={selectedMember} />
+            <RoutineSection
+              selectedMember={selectedMember}
+            />
           </section>
         </div>
       </div>
