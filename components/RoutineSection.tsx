@@ -11,9 +11,7 @@ type RoutineStep = {
   id: string
   title: string
   step_order: number
-  routines: {
-    title: string
-  } | null
+  routines: { title: string } | { title: string }[] | null
 }
 
 type Completion = {
@@ -111,7 +109,9 @@ export default function RoutineSection({ selectedMember }: Props) {
   }, [selectedMember])
 
   const grouped = steps.reduce((acc, step) => {
-    const routineName = step.routines?.title || 'Routine'
+    const routineName = Array.isArray(step.routines)
+  ? step.routines[0]?.title || 'Routine'
+  : step.routines?.title || 'Routine'
 
     if (!acc[routineName]) {
       acc[routineName] = []
