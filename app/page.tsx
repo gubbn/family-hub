@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import RoutineSection from '../components/RoutineSection'
+import NavBar from '../components/NavBar'
 
 type Chore = {
   id: string
@@ -168,6 +169,7 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-slate-100 p-6 text-slate-900">
       <div className="mx-auto max-w-7xl">
+	  <NavBar />
         <h1 className="mb-6 text-5xl font-bold tracking-tight">
           Family Hub
         </h1>
