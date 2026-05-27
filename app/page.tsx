@@ -70,11 +70,15 @@ export default function Home() {
 
       if (assignmentError) console.error('Assignment error:', assignmentError)
 
-      const mappedChores =
-        assignmentData
-          ?.map((assignment: Assignment) => assignment.chores)
-          .flat()
-          .filter(Boolean) || []
+      const mappedChores: Chore[] =
+  assignmentData
+    ?.flatMap((assignment: Assignment) => {
+      if (!assignment.chores) return []
+
+      return Array.isArray(assignment.chores)
+        ? assignment.chores
+        : [assignment.chores]
+    }) || []
 
       const { data: completedData, error: completedError } = await supabase
         .from('chore_completions')
