@@ -13,6 +13,7 @@ type FamilyMember = {
 type Meal = {
   id: string
   title: string
+  created_at?: string
 }
 
 type MealRating = {
@@ -37,9 +38,9 @@ export default function MealsPage() {
         .select('id, name, avatar_emoji')
 
       const { data: mealsData } = await supabase
-        .from('meals')
-        .select('id, title')
-        .order('title')
+  .from('meals')
+  .select('id, title, created_at')
+  .order('created_at', { ascending: false })
 
       const { data: ratingsData } = await supabase
         .from('meal_ratings')

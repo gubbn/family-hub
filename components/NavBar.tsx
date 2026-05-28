@@ -10,6 +10,7 @@ const links = [
   { href: '/schedule', label: 'Our Day', emoji: '📅' },
   { href: '/meals', label: 'Meals', emoji: '🍽️' },
   { href: '/bored', label: 'Bored', emoji: '🎲' },
+  { href: '/parent', label: 'Parent', emoji: '🔐' },
 ]
 
 export default function NavBar() {
