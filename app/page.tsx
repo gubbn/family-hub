@@ -159,7 +159,7 @@ export default function Home() {
 
         <section className="mb-4 rounded-2xl bg-white p-5 shadow-sm">
           <h1 className="mb-2 text-3xl font-bold tracking-tight">
-            Our Day
+            The Gubb Hubb
           </h1>
 
           <p className="text-sm text-slate-600">
@@ -248,7 +248,7 @@ export default function Home() {
 
           <div className="rounded-2xl bg-white p-5 shadow-sm">
             <h2 className="mb-3 text-xl font-semibold">
-              Points Leaderboard
+              Leaderboard
             </h2>
 
             <div className="space-y-2">
