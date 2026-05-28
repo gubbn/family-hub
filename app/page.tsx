@@ -36,7 +36,7 @@ export default function Home() {
 
         <section className="mb-8 rounded-3xl bg-white p-8 shadow-sm">
           <h1 className="mb-4 text-5xl font-bold tracking-tight">
-            Family Hub v1.2
+            The Gubb Hub v1.2
           </h1>
 
           <p className="max-w-2xl text-lg text-slate-600">
