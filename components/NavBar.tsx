@@ -7,6 +7,7 @@ const links = [
   { href: '/', label: 'Dashboard', emoji: '🏠' },
   { href: '/chores', label: 'Chores', emoji: '🧹' },
   { href: '/routines', label: 'Routines', emoji: '🌅' },
+  { href: '/schedule', label: 'Our Day', emoji: '📅' },
   { href: '/meals', label: 'Meals', emoji: '🍽️' },
   { href: '/bored', label: 'Bored', emoji: '🎲' },
 ]
