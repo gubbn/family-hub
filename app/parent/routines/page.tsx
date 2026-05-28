@@ -20,6 +20,8 @@ type RoutineStep = {
   routines: { title: string } | { title: string }[] | null
 }
 
+const routineOrder = ['morning', 'afternoon', 'evening']
+
 export default function ParentRoutinesPage() {
   const [routines, setRoutines] = useState<Routine[]>([])
   const [steps, setSteps] = useState<RoutineStep[]>([])
@@ -32,7 +34,6 @@ export default function ParentRoutinesPage() {
     const { data: routinesData, error: routinesError } = await supabase
       .from('routines')
       .select('id, title, time_of_day')
-      .order('time_of_day')
 
     const { data: stepsData, error: stepsError } = await supabase
       .from('routine_steps')
@@ -57,11 +58,15 @@ export default function ParentRoutinesPage() {
       setStatus('Could not load routine steps')
     }
 
-    const safeRoutines = routinesData || []
+    const safeRoutines = (routinesData || []).sort((a, b) => {
+      const aIndex = routineOrder.indexOf(a.time_of_day || '')
+      const bIndex = routineOrder.indexOf(b.time_of_day || '')
+
+      return (aIndex === -1 ? 99 : aIndex) - (bIndex === -1 ? 99 : bIndex)
+    })
 
     setRoutines(safeRoutines)
     setSteps((stepsData as RoutineStep[]) || [])
-
     setSelectedRoutine((current) => current || safeRoutines[0]?.id || '')
   }
 
@@ -98,6 +103,54 @@ export default function ParentRoutinesPage() {
     await loadData()
   }
 
+  async function updateRoutineStep(
+    stepId: string,
+    updates: Partial<RoutineStep>
+  ) {
+    const { error } = await supabase
+      .from('routine_steps')
+      .update(updates)
+      .eq('id', stepId)
+
+    if (error) {
+      console.error('Update routine step error:', error)
+      setStatus('Could not update routine step')
+      return
+    }
+
+    setSteps((current) =>
+      current.map((step) =>
+        step.id === stepId ? { ...step, ...updates } : step
+      )
+    )
+  }
+
+  async function moveStep(
+    currentStep: RoutineStep,
+    swapWithStep: RoutineStep | undefined
+  ) {
+    if (!swapWithStep) return
+
+    const { error: firstError } = await supabase
+      .from('routine_steps')
+      .update({ step_order: swapWithStep.step_order })
+      .eq('id', currentStep.id)
+
+    const { error: secondError } = await supabase
+      .from('routine_steps')
+      .update({ step_order: currentStep.step_order })
+      .eq('id', swapWithStep.id)
+
+    if (firstError || secondError) {
+      console.error('Move routine step error:', firstError || secondError)
+      setStatus('Could not move routine step')
+      return
+    }
+
+    setStatus('Routine order updated')
+    await loadData()
+  }
+
   async function deleteRoutineStep(stepId: string) {
     const { error } = await supabase
       .from('routine_steps')
@@ -114,21 +167,13 @@ export default function ParentRoutinesPage() {
     await loadData()
   }
 
-  function getRoutineTitle(step: RoutineStep) {
-    if (!step.routines) return 'Routine'
-
-    return Array.isArray(step.routines)
-      ? step.routines[0]?.title || 'Routine'
-      : step.routines.title
-  }
-
   useEffect(() => {
     loadData()
   }, [])
 
   return (
     <main className="min-h-screen bg-slate-100 p-6 text-slate-900">
-      <div className="mx-auto max-w-5xl">
+      <div className="mx-auto max-w-6xl">
         <NavBar />
 
         <ParentBackButton />
@@ -187,67 +232,90 @@ export default function ParentRoutinesPage() {
             </div>
           </section>
 
-<section className="rounded-3xl bg-white p-6 shadow-sm">
-  <h2 className="mb-5 text-2xl font-semibold">
-    Existing Routine Steps
-  </h2>
+          <section className="rounded-3xl bg-white p-6 shadow-sm">
+            <h2 className="mb-5 text-2xl font-semibold">
+              Existing Routine Steps
+            </h2>
 
-  <div className="overflow-x-auto rounded-2xl bg-slate-50 p-3">
-    <div className="grid min-w-[900px] grid-cols-3 gap-3">
-      {[...routines]
-  .sort((a, b) => {
-    const order = ['morning', 'afternoon', 'evening']
+            <div className="overflow-x-auto rounded-2xl bg-slate-50 p-3">
+              <div className="grid min-w-[900px] grid-cols-3 gap-3">
+                {routines.map((routine) => {
+                  const routineSteps = steps
+                    .filter((step) => step.routine_id === routine.id)
+                    .sort((a, b) => a.step_order - b.step_order)
 
-    return (
-      order.indexOf(a.time_of_day || '') -
-      order.indexOf(b.time_of_day || '')
-    )
-  })
-  .map((routine) => {
-        const routineSteps = steps
-          .filter((step) => step.routine_id === routine.id)
-          .sort((a, b) => a.step_order - b.step_order)
+                  return (
+                    <section
+                      key={routine.id}
+                      className="min-h-[400px] rounded-2xl border border-slate-200 bg-white p-4"
+                    >
+                      <h3 className="mb-4 text-center text-lg font-bold">
+                        {routine.title}
+                      </h3>
 
-        return (
-          <section
-            key={routine.id}
-            className="min-h-[400px] rounded-2xl border border-slate-200 bg-white p-4"
-          >
-            <h3 className="mb-4 text-center text-lg font-bold">
-              {routine.title}
-            </h3>
+                      {routineSteps.length === 0 && (
+                        <p className="text-center text-xs text-slate-400">
+                          No steps
+                        </p>
+                      )}
 
-            {routineSteps.length === 0 && (
-              <p className="text-center text-xs text-slate-400">
-                No steps
-              </p>
-            )}
+                      <div className="space-y-2">
+                        {routineSteps.map((step, index) => (
+                          <div
+                            key={step.id}
+                            className="rounded-xl border border-slate-200 bg-slate-50 p-3"
+                          >
+                            <div className="mb-2 text-xs text-slate-500">
+                              Step {step.step_order}
+                            </div>
 
-            <div className="space-y-2">
-              {routineSteps.map((step) => (
-                <div
-                  key={step.id}
-                  className="rounded-xl border border-slate-200 bg-slate-50 p-3"
-                >
-                  <div className="text-sm font-semibold">
-                    {step.step_order}. {step.title}
-                  </div>
+                            <input
+                              value={step.title}
+                              onChange={(event) =>
+                                updateRoutineStep(step.id, {
+                                  title: event.target.value,
+                                })
+                              }
+                              className="w-full rounded-lg border border-slate-200 bg-white p-2 text-sm font-semibold"
+                            />
 
-                  <button
-                    onClick={() => deleteRoutineStep(step.id)}
-                    className="mt-3 w-full rounded-lg border border-red-200 px-3 py-2 text-xs text-red-600 hover:bg-red-50"
-                  >
-                    Delete
-                  </button>
-                </div>
-              ))}
+                            <div className="mt-3 grid grid-cols-3 gap-2">
+                              <button
+                                onClick={() =>
+                                  moveStep(step, routineSteps[index - 1])
+                                }
+                                disabled={index === 0}
+                                className="rounded-lg border border-slate-200 px-2 py-2 text-xs text-slate-600 disabled:opacity-30"
+                              >
+                                ↑
+                              </button>
+
+                              <button
+                                onClick={() =>
+                                  moveStep(step, routineSteps[index + 1])
+                                }
+                                disabled={index === routineSteps.length - 1}
+                                className="rounded-lg border border-slate-200 px-2 py-2 text-xs text-slate-600 disabled:opacity-30"
+                              >
+                                ↓
+                              </button>
+
+                              <button
+                                onClick={() => deleteRoutineStep(step.id)}
+                                className="rounded-lg border border-red-200 px-2 py-2 text-xs text-red-600 hover:bg-red-50"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                  )
+                })}
+              </div>
             </div>
           </section>
-        )
-      })}
-    </div>
-  </div>
-</section>
         </ParentGate>
       </div>
     </main>
