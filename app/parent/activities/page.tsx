@@ -68,6 +68,32 @@ export default function ParentActivitiesPage() {
     await loadActivities()
   }
 
+  async function updateActivity(
+    activityId: string,
+    updates: Partial<Activity>
+  ) {
+    const { error } = await supabase
+      .from('activities')
+      .update(updates)
+      .eq('id', activityId)
+
+    if (error) {
+      console.error('Update activity error:', error)
+      setStatus('Could not update activity')
+      return
+    }
+
+    setActivities((current) =>
+      current.map((activity) =>
+        activity.id === activityId
+          ? { ...activity, ...updates }
+          : activity
+      )
+    )
+
+    setStatus('Activity updated')
+  }
+
   async function deleteActivity(activityId: string) {
     const { error } = await supabase
       .from('activities')
@@ -168,17 +194,58 @@ export default function ParentActivitiesPage() {
               {activities.map((activity) => (
                 <div
                   key={activity.id}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4"
+                  className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-[1fr_150px_150px_150px_auto]"
                 >
-                  <div>
-                    <div className="font-semibold">
-                      {activity.title}
-                    </div>
+                  <input
+                    value={activity.title}
+                    onChange={(event) =>
+                      updateActivity(activity.id, {
+                        title: event.target.value,
+                      })
+                    }
+                    className="rounded-xl border border-slate-200 bg-white p-3"
+                  />
 
-                    <div className="text-sm text-slate-500">
-                      {activity.energy_level} energy · {activity.location_type} · {activity.activity_type}
-                    </div>
-                  </div>
+                  <select
+                    value={activity.energy_level}
+                    onChange={(event) =>
+                      updateActivity(activity.id, {
+                        energy_level: event.target.value,
+                      })
+                    }
+                    className="rounded-xl border border-slate-200 bg-white p-3"
+                  >
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                  </select>
+
+                  <select
+                    value={activity.location_type}
+                    onChange={(event) =>
+                      updateActivity(activity.id, {
+                        location_type: event.target.value,
+                      })
+                    }
+                    className="rounded-xl border border-slate-200 bg-white p-3"
+                  >
+                    <option value="indoors">Indoors</option>
+                    <option value="outdoors">Outdoors</option>
+                    <option value="anywhere">Anywhere</option>
+                  </select>
+
+                  <select
+                    value={activity.activity_type}
+                    onChange={(event) =>
+                      updateActivity(activity.id, {
+                        activity_type: event.target.value,
+                      })
+                    }
+                    className="rounded-xl border border-slate-200 bg-white p-3"
+                  >
+                    <option value="solo">Solo</option>
+                    <option value="family">Family</option>
+                  </select>
 
                   <button
                     onClick={() => deleteActivity(activity.id)}

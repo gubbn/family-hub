@@ -236,45 +236,6 @@ export default function ParentMealsPage() {
             </div>
           </section>
 
-          <section className="mb-6 rounded-3xl bg-white p-6 shadow-sm">
-            <h2 className="mb-5 text-2xl font-semibold">
-              Existing Meals
-            </h2>
-
-            <div className="space-y-3">
-              {meals.map((meal) => (
-                <div
-                  key={meal.id}
-                  className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-[1fr_1fr_auto]"
-                >
-                  <input
-                    value={meal.title}
-                    onChange={(event) =>
-                      updateMeal(meal.id, event.target.value)
-                    }
-                    className="rounded-xl border border-slate-200 bg-white p-3"
-                  />
-
-                  <input
-                    value={meal.notes || ''}
-                    onChange={(event) =>
-                      updateMealNotes(meal.id, event.target.value)
-                    }
-                    className="rounded-xl border border-slate-200 bg-white p-3"
-                    placeholder="Meal notes"
-                  />
-
-                  <button
-                    onClick={() => deleteMeal(meal.id)}
-                    className="rounded-xl border border-red-200 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
-                  >
-                    Delete
-                  </button>
-                </div>
-              ))}
-            </div>
-          </section>
-
           <section className="rounded-3xl bg-white p-6 shadow-sm">
             <h2 className="mb-5 text-2xl font-semibold">
               Meals This Week
@@ -323,6 +284,47 @@ export default function ParentMealsPage() {
               })}
             </div>
           </section>
+<br />
+          <section className="mb-6 rounded-3xl bg-white p-6 shadow-sm">
+            <h2 className="mb-5 text-2xl font-semibold">
+              Existing Meals
+            </h2>
+
+            <div className="space-y-3">
+              {meals.map((meal) => (
+                <div
+                  key={meal.id}
+                  className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-[1fr_1fr_auto]"
+                >
+                  <input
+                    value={meal.title}
+                    onChange={(event) =>
+                      updateMeal(meal.id, event.target.value)
+                    }
+                    className="rounded-xl border border-slate-200 bg-white p-3"
+                  />
+
+                  <input
+                    value={meal.notes || ''}
+                    onChange={(event) =>
+                      updateMealNotes(meal.id, event.target.value)
+                    }
+                    className="rounded-xl border border-slate-200 bg-white p-3"
+                    placeholder="Meal notes"
+                  />
+
+                  <button
+                    onClick={() => deleteMeal(meal.id)}
+                    className="rounded-xl border border-red-200 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                  >
+                    Delete
+                  </button>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          
         </ParentGate>
       </div>
     </main>
