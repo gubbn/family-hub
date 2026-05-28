@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 
-const PARENT_PIN = '1234'
+const PARENT_PIN = process.env.NEXT_PUBLIC_PARENT_PIN || '1234'
 
 type Props = {
   children: React.ReactNode
