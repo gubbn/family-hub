@@ -192,57 +192,41 @@ export default function ChoresPage() {
           Chores
         </h1>
 
-        <section className="mb-6 rounded-3xl bg-white p-6 shadow-sm">
-          <h2 className="mb-5 text-2xl font-semibold">
-            Today&apos;s Points
-          </h2>
+<section className="mb-6 rounded-3xl bg-white p-6 shadow-sm">
+  <h2 className="mb-5 text-2xl font-semibold">
+    Who&apos;s doing chores?
+  </h2>
 
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-            {familyMembers.map((member) => (
-              <div
-                key={member.id}
-                className="rounded-2xl border border-slate-200 bg-slate-50 p-5 text-center"
-              >
-                <div className="mb-2 text-5xl">
-                  {member.avatar_emoji || '🙂'}
-                </div>
-                <div className="text-lg font-medium">
-                  {member.name}
-                </div>
-                <div className="mt-2 text-4xl font-bold text-blue-600">
-                  {points[member.id] || 0}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
+  <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+    {familyMembers.map((member) => (
+      <button
+        key={member.id}
+        onClick={() => setSelectedMember(member.id)}
+        className={`rounded-2xl border p-5 text-center transition-all ${
+          selectedMember === member.id
+            ? 'border-blue-500 bg-blue-100 shadow-sm'
+            : 'border-slate-200 bg-white hover:bg-slate-50'
+        }`}
+      >
+        <div className="mb-2 text-5xl">
+          {member.avatar_emoji || '🙂'}
+        </div>
 
-        <section className="mb-6 rounded-3xl bg-white p-6 shadow-sm">
-          <h2 className="mb-5 text-2xl font-semibold">
-            Who&apos;s doing chores?
-          </h2>
+        <div className="text-xl font-medium">
+          {member.name}
+        </div>
 
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-            {familyMembers.map((member) => (
-              <button
-                key={member.id}
-                onClick={() => setSelectedMember(member.id)}
-                className={`rounded-2xl border p-5 text-center transition-all ${
-                  selectedMember === member.id
-                    ? 'border-blue-500 bg-blue-100 shadow-sm'
-                    : 'border-slate-200 bg-white hover:bg-slate-50'
-                }`}
-              >
-                <div className="mb-2 text-5xl">
-                  {member.avatar_emoji || '🙂'}
-                </div>
-                <div className="text-xl font-medium">
-                  {member.name}
-                </div>
-              </button>
-            ))}
-          </div>
-        </section>
+        <div className="mt-3 text-3xl font-bold text-blue-600">
+          {points[member.id] || 0}
+        </div>
+
+        <div className="text-xs text-slate-500">
+          points today
+        </div>
+      </button>
+    ))}
+  </div>
+</section>
 
         <section className="mb-6 rounded-3xl bg-white p-4 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3">
