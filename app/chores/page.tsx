@@ -18,7 +18,8 @@ type Chore = {
 
 type ChoreCompletion = {
   chore_id: string
-  completed_by: string
+  completed_by: string | null
+  chores: { points: number } | { points: number }[] | null
 }
 
 type ChoreAssignment = {
@@ -73,7 +74,13 @@ export default function ChoresPage() {
 
         supabase
           .from('chore_completions')
-          .select('chore_id, completed_by')
+          .select(`
+            chore_id,
+            completed_by,
+            chores (
+              points
+            )
+          `)
           .gte('completed_at', today),
       ])
 
@@ -100,24 +107,26 @@ export default function ChoresPage() {
       setFamilyMembers(safeMembers)
       setChores(safeChores)
 
-      const completedKeys = safeCompletions.map(
-        (completion) =>
-          `${completion.chore_id}:${completion.completed_by}`
-      )
+      const completedKeys = safeCompletions
+        .filter((completion) => completion.completed_by)
+        .map(
+          (completion) =>
+            `${completion.chore_id}:${completion.completed_by}`
+        )
 
       setCompleted(completedKeys)
 
       const totals: Record<string, number> = {}
 
       safeCompletions.forEach((completion) => {
-        const chore = safeChores.find(
-          (item) => item.id === completion.chore_id
-        )
+        if (!completion.completed_by) return
 
-        if (!chore) return
+        const chorePoints = Array.isArray(completion.chores)
+          ? completion.chores[0]?.points || 0
+          : completion.chores?.points || 0
 
         totals[completion.completed_by] =
-          (totals[completion.completed_by] || 0) + chore.points
+          (totals[completion.completed_by] || 0) + chorePoints
       })
 
       setPoints(totals)
