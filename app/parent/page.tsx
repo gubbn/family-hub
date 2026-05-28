@@ -27,6 +27,12 @@ const parentCards = [
     href: '/parent/family',
     emoji: '👨‍👩‍👧',
   },
+  {
+  title: 'Chores',
+  description: 'Add chores and assign them to family members.',
+  href: '/parent/chores',
+  emoji: '🧹',
+},
 ]
 
 export default function ParentPage() {
