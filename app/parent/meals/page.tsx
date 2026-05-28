@@ -20,6 +20,7 @@ const days = [
 type Meal = {
   id: string
   title: string
+  notes: string | null
 }
 
 type MealPlan = {
@@ -38,7 +39,7 @@ export default function ParentMealsPage() {
   async function loadData() {
     const { data: mealsData, error: mealsError } = await supabase
       .from('meals')
-      .select('id, title')
+      .select('id, title, notes')
       .order('created_at', { ascending: false })
 
     const { data: planData, error: planError } = await supabase
@@ -68,6 +69,7 @@ export default function ParentMealsPage() {
       .from('meals')
       .insert({
         title: trimmedTitle,
+        notes: null,
       })
 
     if (error) {
@@ -78,6 +80,61 @@ export default function ParentMealsPage() {
 
     setNewMealTitle('')
     setStatus('Meal added')
+    await loadData()
+  }
+
+  async function updateMeal(mealId: string, title: string) {
+    const trimmedTitle = title.trim()
+
+    if (!trimmedTitle) {
+      setStatus('Meal name cannot be blank')
+      return
+    }
+
+    const { error } = await supabase
+      .from('meals')
+      .update({ title: trimmedTitle })
+      .eq('id', mealId)
+
+    if (error) {
+      console.error('Update meal error:', error)
+      setStatus('Could not update meal')
+      return
+    }
+
+    setStatus('Meal updated')
+    await loadData()
+  }
+
+  async function updateMealNotes(mealId: string, notes: string) {
+    const { error } = await supabase
+      .from('meals')
+      .update({ notes: notes || null })
+      .eq('id', mealId)
+
+    if (error) {
+      console.error('Update meal notes error:', error)
+      setStatus('Could not update meal notes')
+      return
+    }
+
+    setStatus('Meal notes updated')
+    await loadData()
+  }
+
+  async function deleteMeal(mealId: string) {
+    const { error } = await supabase
+      .from('meals')
+      .delete()
+      .eq('id', mealId)
+
+    if (error) {
+      console.error('Delete meal error:', error)
+      setStatus('Could not delete meal')
+      return
+    }
+
+    setStatus('Meal deleted')
     await loadData()
   }
 
@@ -143,6 +200,7 @@ export default function ParentMealsPage() {
     <main className="min-h-screen bg-slate-100 p-6 text-slate-900">
       <div className="mx-auto max-w-5xl">
         <NavBar />
+
         <ParentBackButton />
 
         <h1 className="mb-6 text-4xl font-bold tracking-tight">
@@ -175,6 +233,45 @@ export default function ParentMealsPage() {
               >
                 Add meal
               </button>
+            </div>
+          </section>
+
+          <section className="mb-6 rounded-3xl bg-white p-6 shadow-sm">
+            <h2 className="mb-5 text-2xl font-semibold">
+              Existing Meals
+            </h2>
+
+            <div className="space-y-3">
+              {meals.map((meal) => (
+                <div
+                  key={meal.id}
+                  className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-[1fr_1fr_auto]"
+                >
+                  <input
+                    value={meal.title}
+                    onChange={(event) =>
+                      updateMeal(meal.id, event.target.value)
+                    }
+                    className="rounded-xl border border-slate-200 bg-white p-3"
+                  />
+
+                  <input
+                    value={meal.notes || ''}
+                    onChange={(event) =>
+                      updateMealNotes(meal.id, event.target.value)
+                    }
+                    className="rounded-xl border border-slate-200 bg-white p-3"
+                    placeholder="Meal notes"
+                  />
+
+                  <button
+                    onClick={() => deleteMeal(meal.id)}
+                    className="rounded-xl border border-red-200 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                  >
+                    Delete
+                  </button>
+                </div>
+              ))}
             </div>
           </section>
 
@@ -219,7 +316,7 @@ export default function ParentMealsPage() {
                         updateNotes(dayNumber, event.target.value)
                       }
                       className="rounded-xl border border-slate-200 bg-white p-3"
-                      placeholder="Notes"
+                      placeholder="Daily meal notes"
                     />
                   </div>
                 )
