@@ -4,36 +4,35 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabaseClient'
 import NavBar from '../../components/NavBar'
 
-type Chore = {
-  id: string
-  title: string
-  points: number
-}
-
 type FamilyMember = {
   id: string
   name: string
   avatar_emoji: string | null
 }
 
-type Completion = {
-  chore_id: string
-  completed_by: string | null
-  chores: { points: number } | { points: number }[] | null
+type Chore = {
+  id: string
+  title: string
+  points: number
 }
 
-type Assignment = {
+type ChoreCompletion = {
+  chore_id: string
+  completed_by: string
+}
+
+type ChoreAssignment = {
   chore_id: string
   family_member_id: string
   chores: Chore | Chore[] | null
 }
 
 export default function ChoresPage() {
-  const [chores, setChores] = useState<Chore[]>([])
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([])
-  const [selectedMember, setSelectedMember] = useState('')
+  const [chores, setChores] = useState<Chore[]>([])
   const [completed, setCompleted] = useState<string[]>([])
   const [points, setPoints] = useState<Record<string, number>>({})
+  const [selectedMember, setSelectedMember] = useState('')
   const [loading, setLoading] = useState(true)
 
   async function loadData() {
@@ -42,36 +41,52 @@ export default function ChoresPage() {
     try {
       const today = new Date().toISOString().split('T')[0]
 
-      const { data: membersData, error: membersError } = await supabase
+      const membersResponse = await supabase
         .from('family_members')
         .select('id, name, avatar_emoji')
+        .order('display_order')
 
-      if (membersError) console.error('Members error:', membersError)
+      if (membersResponse.error) {
+        console.error('Load family members error:', membersResponse.error)
+      }
 
-      const safeMembers = membersData || []
+      const safeMembers = membersResponse.data || []
       const activeMember = selectedMember || safeMembers[0]?.id || ''
 
       if (!selectedMember && activeMember) {
         setSelectedMember(activeMember)
       }
 
-      const { data: assignmentData, error: assignmentError } = await supabase
-        .from('chore_assignments')
-        .select(`
-          chore_id,
-          family_member_id,
-          chores (
-            id,
-            title,
-            points
-          )
-        `)
-        .eq('family_member_id', activeMember)
+      const [assignmentsResponse, completionsResponse] = await Promise.all([
+        supabase
+          .from('chore_assignments')
+          .select(`
+            chore_id,
+            family_member_id,
+            chores (
+              id,
+              title,
+              points
+            )
+          `)
+          .eq('family_member_id', activeMember),
 
-      if (assignmentError) console.error('Assignment error:', assignmentError)
+        supabase
+          .from('chore_completions')
+          .select('chore_id, completed_by')
+          .gte('completed_at', today),
+      ])
 
-      const mappedChores: Chore[] =
-        assignmentData?.flatMap((assignment: Assignment) => {
+      if (assignmentsResponse.error) {
+        console.error('Load chore assignments error:', assignmentsResponse.error)
+      }
+
+      if (completionsResponse.error) {
+        console.error('Load chore completions error:', completionsResponse.error)
+      }
+
+      const safeChores: Chore[] =
+        assignmentsResponse.data?.flatMap((assignment: ChoreAssignment) => {
           if (!assignment.chores) return []
 
           return Array.isArray(assignment.chores)
@@ -79,56 +94,48 @@ export default function ChoresPage() {
             : [assignment.chores]
         }) || []
 
-      const { data: completedData, error: completedError } = await supabase
-        .from('chore_completions')
-        .select('chore_id, completed_by, chores(points)')
-        .gte('completed_at', today)
-
-      if (completedError) console.error('Completions error:', completedError)
-
-      const safeCompletions = completedData || []
+      const safeCompletions =
+        (completionsResponse.data as ChoreCompletion[]) || []
 
       setFamilyMembers(safeMembers)
-      setChores(mappedChores)
+      setChores(safeChores)
 
-      setCompleted(
-        safeCompletions
-          .filter((completion) => completion.chore_id && completion.completed_by)
-          .map((completion) => `${completion.chore_id}:${completion.completed_by}`)
+      const completedKeys = safeCompletions.map(
+        (completion) =>
+          `${completion.chore_id}:${completion.completed_by}`
       )
+
+      setCompleted(completedKeys)
 
       const totals: Record<string, number> = {}
 
-      ;(safeCompletions as Completion[]).forEach((completion) => {
-        if (!completion.completed_by) return
+      safeCompletions.forEach((completion) => {
+        const chore = safeChores.find(
+          (item) => item.id === completion.chore_id
+        )
 
-        const chorePoints = Array.isArray(completion.chores)
-          ? completion.chores[0]?.points || 0
-          : completion.chores?.points || 0
+        if (!chore) return
 
         totals[completion.completed_by] =
-          (totals[completion.completed_by] || 0) + chorePoints
+          (totals[completion.completed_by] || 0) + chore.points
       })
 
       setPoints(totals)
     } catch (error) {
-      console.error('Load data failed:', error)
+      console.error('Load chores failed:', error)
     } finally {
       setLoading(false)
     }
   }
 
   async function completeChore(choreId: string) {
-    if (!selectedMember) {
-      alert('Choose who is completing the chore first')
-      return
-    }
+    if (!selectedMember) return
 
     const today = new Date().toISOString().split('T')[0]
-    const completionKey = `${choreId}:${selectedMember}`
-    const isAlreadyComplete = completed.includes(completionKey)
+    const key = `${choreId}:${selectedMember}`
+    const isComplete = completed.includes(key)
 
-    if (isAlreadyComplete) {
+    if (isComplete) {
       const { error } = await supabase
         .from('chore_completions')
         .delete()
@@ -137,7 +144,7 @@ export default function ChoresPage() {
         .gte('completed_at', today)
 
       if (error) {
-        console.error('Delete completion error:', error)
+        console.error('Untick chore error:', error)
         return
       }
 
@@ -153,7 +160,7 @@ export default function ChoresPage() {
       })
 
     if (error) {
-      console.error('Completion insert error:', error)
+      console.error('Complete chore error:', error)
       return
     }
 
@@ -185,48 +192,48 @@ export default function ChoresPage() {
 
   return (
     <main className="min-h-screen bg-slate-100 p-6 text-slate-900">
-      <div className="mx-auto max-w-7xl">
+      <div className="mx-auto max-w-6xl">
         <NavBar />
 
         <h1 className="mb-6 text-5xl font-bold tracking-tight">
           Chores
         </h1>
 
-<section className="mb-6 rounded-3xl bg-white p-6 shadow-sm">
-  <h2 className="mb-5 text-2xl font-semibold">
-    Who&apos;s doing chores?
-  </h2>
+        <section className="mb-6 rounded-3xl bg-white p-6 shadow-sm">
+          <h2 className="mb-5 text-2xl font-semibold">
+            Who&apos;s doing chores?
+          </h2>
 
-  <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-    {familyMembers.map((member) => (
-      <button
-        key={member.id}
-        onClick={() => setSelectedMember(member.id)}
-        className={`rounded-2xl border p-5 text-center transition-all ${
-          selectedMember === member.id
-            ? 'border-blue-500 bg-blue-100 shadow-sm'
-            : 'border-slate-200 bg-white hover:bg-slate-50'
-        }`}
-      >
-        <div className="mb-2 text-5xl">
-          {member.avatar_emoji || '🙂'}
-        </div>
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+            {familyMembers.map((member) => (
+              <button
+                key={member.id}
+                onClick={() => setSelectedMember(member.id)}
+                className={`rounded-2xl border p-5 transition-all ${
+                  selectedMember === member.id
+                    ? 'border-blue-500 bg-blue-100 shadow-sm'
+                    : 'border-slate-200 bg-white hover:bg-slate-50'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="text-4xl">
+                    {member.avatar_emoji || '🙂'}
+                  </div>
 
-        <div className="text-xl font-medium">
-          {member.name}
-        </div>
+                  <div className="text-left">
+                    <div className="text-lg font-semibold">
+                      {member.name}
+                    </div>
 
-        <div className="mt-3 text-3xl font-bold text-blue-600">
-          {points[member.id] || 0}
-        </div>
-
-        <div className="text-xs text-slate-500">
-          points today
-        </div>
-      </button>
-    ))}
-  </div>
-</section>
+                    <div className="text-sm text-slate-500">
+                      {points[member.id] || 0} points
+                    </div>
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </section>
 
         <section className="mb-6 rounded-3xl bg-white p-4 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3">

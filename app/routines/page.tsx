@@ -20,6 +20,7 @@ export default function RoutinesPage() {
       const { data, error } = await supabase
         .from('family_members')
         .select('id, name, avatar_emoji')
+        .order('display_order')
 
       if (error) {
         console.error('Load members error:', error)
