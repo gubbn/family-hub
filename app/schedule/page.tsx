@@ -110,7 +110,7 @@ export default function SchedulePage() {
         <NavBar />
 
         <h1 className="mb-6 text-5xl font-bold tracking-tight">
-          Schedule
+          Our Day
         </h1>
 
         <section className="mb-6 rounded-3xl bg-white p-6 shadow-sm">
