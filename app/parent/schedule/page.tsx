@@ -107,6 +107,30 @@ export default function ParentSchedulePage() {
     await loadEvents()
   }
 
+  async function updateWeeklyEvent(
+    eventId: string,
+    updates: Partial<WeeklyEvent>
+  ) {
+    const { error } = await supabase
+      .from('weekly_events')
+      .update(updates)
+      .eq('id', eventId)
+
+    if (error) {
+      console.error('Update weekly event error:', error)
+      setStatus('Could not update weekly event')
+      return
+    }
+
+    setWeeklyEvents((current) =>
+      current.map((event) =>
+        event.id === eventId ? { ...event, ...updates } : event
+      )
+    )
+
+    setStatus('Weekly event updated')
+  }
+
   async function deleteWeeklyEvent(eventId: string) {
     const { error } = await supabase
       .from('weekly_events')
@@ -129,7 +153,7 @@ export default function ParentSchedulePage() {
 
   return (
     <main className="min-h-screen bg-slate-100 p-6 text-slate-900">
-      <div className="mx-auto max-w-5xl">
+      <div className="mx-auto max-w-6xl">
         <NavBar />
 
         <ParentBackButton />
@@ -224,81 +248,132 @@ export default function ParentSchedulePage() {
             </div>
           </section>
 
-<section className="rounded-3xl bg-white p-6 shadow-sm">
-  <h2 className="mb-5 text-2xl font-semibold">
-    Existing Weekly Events
-  </h2>
+          <section className="rounded-3xl bg-white p-6 shadow-sm">
+            <h2 className="mb-5 text-2xl font-semibold">
+              Existing Weekly Events
+            </h2>
 
-  <div className="overflow-x-auto rounded-2xl bg-slate-50 p-3">
-    <div className="grid min-w-[1100px] grid-cols-7 gap-3">
-      {days.slice(1).map((day, index) => {
-        const dayNumber = index + 1
+            <div className="overflow-x-auto rounded-2xl bg-slate-50 p-3">
+              <div className="grid min-w-[1100px] grid-cols-7 gap-3">
+                {days.slice(1).map((day, index) => {
+                  const dayNumber = index + 1
 
-        const dayEvents = weeklyEvents
-          .filter((event) => event.day_of_week === dayNumber)
-          .sort((a, b) => {
-            const aTime = a.start_time || '99:99'
-            const bTime = b.start_time || '99:99'
-            return aTime.localeCompare(bTime)
-          })
+                  const dayEvents = weeklyEvents
+                    .filter((event) => event.day_of_week === dayNumber)
+                    .sort((a, b) => {
+                      const aTime = a.start_time || '99:99'
+                      const bTime = b.start_time || '99:99'
+                      return aTime.localeCompare(bTime)
+                    })
 
-        return (
-          <section
-            key={day}
-            className="min-h-[400px] rounded-2xl border border-slate-200 bg-white p-3"
-          >
-            <h3 className="mb-3 text-center text-lg font-bold">
-              {day}
-            </h3>
+                  return (
+                    <section
+                      key={day}
+                      className="min-h-[400px] rounded-2xl border border-slate-200 bg-white p-3"
+                    >
+                      <h3 className="mb-3 text-center text-lg font-bold">
+                        {day}
+                      </h3>
 
-            {dayEvents.length === 0 && (
-              <p className="text-center text-xs text-slate-400">
-                No events
-              </p>
-            )}
+                      {dayEvents.length === 0 && (
+                        <p className="text-center text-xs text-slate-400">
+                          No events
+                        </p>
+                      )}
 
-            <div className="space-y-2">
-              {dayEvents.map((event) => (
-                <div
-                  key={event.id}
-                  className="rounded-xl border border-slate-200 bg-slate-50 p-3"
-                >
-                  <div className="text-sm font-semibold">
-                    {event.title}
-                  </div>
+                      <div className="space-y-2">
+                        {dayEvents.map((event) => (
+                          <div
+                            key={event.id}
+                            className="rounded-xl border border-slate-200 bg-slate-50 p-3"
+                          >
+                            <input
+                              value={event.title}
+                              onChange={(inputEvent) =>
+                                updateWeeklyEvent(event.id, {
+                                  title: inputEvent.target.value,
+                                })
+                              }
+                              className="w-full rounded-lg border border-slate-200 bg-white p-2 text-sm font-semibold"
+                            />
 
-                  <div className="mt-1 text-xs text-slate-500">
-                    {event.start_time || 'No time'}
-                    {event.end_time && ` - ${event.end_time}`}
-                  </div>
+                            <select
+                              value={event.day_of_week}
+                              onChange={(inputEvent) =>
+                                updateWeeklyEvent(event.id, {
+                                  day_of_week: Number(inputEvent.target.value),
+                                })
+                              }
+                              className="mt-2 w-full rounded-lg border border-slate-200 bg-white p-2 text-xs"
+                            >
+                              {days.slice(1).map((dayOption, dayIndex) => (
+                                <option key={dayOption} value={dayIndex + 1}>
+                                  {dayOption}
+                                </option>
+                              ))}
+                            </select>
 
-                  {event.location && (
-                    <div className="mt-1 text-xs text-slate-500">
-                      📍 {event.location}
-                    </div>
-                  )}
+                            <div className="mt-2 grid grid-cols-2 gap-2">
+                              <input
+                                type="time"
+                                value={event.start_time || ''}
+                                onChange={(inputEvent) =>
+                                  updateWeeklyEvent(event.id, {
+                                    start_time: inputEvent.target.value || null,
+                                  })
+                                }
+                                className="rounded-lg border border-slate-200 bg-white p-2 text-xs"
+                              />
 
-                  {event.notes && (
-                    <div className="mt-1 text-xs text-slate-500">
-                      {event.notes}
-                    </div>
-                  )}
+                              <input
+                                type="time"
+                                value={event.end_time || ''}
+                                onChange={(inputEvent) =>
+                                  updateWeeklyEvent(event.id, {
+                                    end_time: inputEvent.target.value || null,
+                                  })
+                                }
+                                className="rounded-lg border border-slate-200 bg-white p-2 text-xs"
+                              />
+                            </div>
 
-                  <button
-                    onClick={() => deleteWeeklyEvent(event.id)}
-                    className="mt-3 w-full rounded-lg border border-red-200 px-3 py-2 text-xs text-red-600 hover:bg-red-50"
-                  >
-                    Delete
-                  </button>
-                </div>
-              ))}
+                            <input
+                              value={event.location || ''}
+                              onChange={(inputEvent) =>
+                                updateWeeklyEvent(event.id, {
+                                  location: inputEvent.target.value || null,
+                                })
+                              }
+                              className="mt-2 w-full rounded-lg border border-slate-200 bg-white p-2 text-xs"
+                              placeholder="Location"
+                            />
+
+                            <input
+                              value={event.notes || ''}
+                              onChange={(inputEvent) =>
+                                updateWeeklyEvent(event.id, {
+                                  notes: inputEvent.target.value || null,
+                                })
+                              }
+                              className="mt-2 w-full rounded-lg border border-slate-200 bg-white p-2 text-xs"
+                              placeholder="Notes"
+                            />
+
+                            <button
+                              onClick={() => deleteWeeklyEvent(event.id)}
+                              className="mt-3 w-full rounded-lg border border-red-200 px-3 py-2 text-xs text-red-600 hover:bg-red-50"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                  )
+                })}
+              </div>
             </div>
           </section>
-        )
-      })}
-    </div>
-  </div>
-</section>
         </ParentGate>
       </div>
     </main>
