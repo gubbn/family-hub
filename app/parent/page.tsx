@@ -33,6 +33,12 @@ const parentCards = [
   href: '/parent/chores',
   emoji: '🧹',
 },
+{
+  title: 'Routines',
+  description: 'Add and manage routine steps.',
+  href: '/parent/routines',
+  emoji: '🌅',
+},
 ]
 
 export default function ParentPage() {
