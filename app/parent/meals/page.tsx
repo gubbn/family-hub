@@ -17,10 +17,24 @@ const days = [
   'Sunday',
 ]
 
+const stapleOptions = [
+  'Beef',
+  'Chicken',
+  'Vegetarian',
+  'Fish',
+  'Pasta',
+  'Rice',
+  'Side',
+  'Quick Meal',
+  'Slow Cooker',
+  'Air Fryer',
+]
+
 type Meal = {
   id: string
   title: string
   notes: string | null
+  staple: string | null
 }
 
 type MealPlan = {
@@ -34,12 +48,13 @@ export default function ParentMealsPage() {
   const [meals, setMeals] = useState<Meal[]>([])
   const [mealPlan, setMealPlan] = useState<MealPlan[]>([])
   const [newMealTitle, setNewMealTitle] = useState('')
+  const [newMealStaple, setNewMealStaple] = useState('')
   const [status, setStatus] = useState('')
 
   async function loadData() {
     const { data: mealsData, error: mealsError } = await supabase
       .from('meals')
-      .select('id, title, notes')
+      .select('id, title, notes, staple')
       .order('created_at', { ascending: false })
 
     const { data: planData, error: planError } = await supabase
@@ -49,7 +64,7 @@ export default function ParentMealsPage() {
     if (mealsError) console.error('Load meals error:', mealsError)
     if (planError) console.error('Load meal plan error:', planError)
 
-    setMeals(mealsData || [])
+    setMeals((mealsData as Meal[]) || [])
     setMealPlan(planData || [])
   }
 
@@ -65,12 +80,11 @@ export default function ParentMealsPage() {
       return
     }
 
-    const { error } = await supabase
-      .from('meals')
-      .insert({
-        title: trimmedTitle,
-        notes: null,
-      })
+    const { error } = await supabase.from('meals').insert({
+      title: trimmedTitle,
+      notes: null,
+      staple: newMealStaple || null,
+    })
 
     if (error) {
       console.error('Add meal error:', error)
@@ -79,6 +93,7 @@ export default function ParentMealsPage() {
     }
 
     setNewMealTitle('')
+    setNewMealStaple('')
     setStatus('Meal added')
     await loadData()
   }
@@ -122,11 +137,24 @@ export default function ParentMealsPage() {
     await loadData()
   }
 
-  async function deleteMeal(mealId: string) {
+  async function updateMealStaple(mealId: string, staple: string) {
     const { error } = await supabase
       .from('meals')
-      .delete()
+      .update({ staple: staple || null })
       .eq('id', mealId)
+
+    if (error) {
+      console.error('Update meal staple error:', error)
+      setStatus('Could not update meal staple')
+      return
+    }
+
+    setStatus('Meal staple updated')
+    await loadData()
+  }
+
+  async function deleteMeal(mealId: string) {
+    const { error } = await supabase.from('meals').delete().eq('id', mealId)
 
     if (error) {
       console.error('Delete meal error:', error)
@@ -141,19 +169,17 @@ export default function ParentMealsPage() {
   async function updateMealPlan(day: number, mealId: string) {
     const existing = getPlanForDay(day)
 
-    const { error } = await supabase
-      .from('meal_plan')
-      .upsert(
-        {
-          id: existing?.id,
-          day_of_week: day,
-          meal_id: mealId || null,
-          notes: existing?.notes || null,
-        },
-        {
-          onConflict: 'day_of_week',
-        }
-      )
+    const { error } = await supabase.from('meal_plan').upsert(
+      {
+        id: existing?.id,
+        day_of_week: day,
+        meal_id: mealId || null,
+        notes: existing?.notes || null,
+      },
+      {
+        onConflict: 'day_of_week',
+      }
+    )
 
     if (error) {
       console.error('Update meal plan error:', error)
@@ -168,19 +194,17 @@ export default function ParentMealsPage() {
   async function updateNotes(day: number, notes: string) {
     const existing = getPlanForDay(day)
 
-    const { error } = await supabase
-      .from('meal_plan')
-      .upsert(
-        {
-          id: existing?.id,
-          day_of_week: day,
-          meal_id: existing?.meal_id || null,
-          notes,
-        },
-        {
-          onConflict: 'day_of_week',
-        }
-      )
+    const { error } = await supabase.from('meal_plan').upsert(
+      {
+        id: existing?.id,
+        day_of_week: day,
+        meal_id: existing?.meal_id || null,
+        notes,
+      },
+      {
+        onConflict: 'day_of_week',
+      }
+    )
 
     if (error) {
       console.error('Update notes error:', error)
@@ -215,17 +239,28 @@ export default function ParentMealsPage() {
           )}
 
           <section className="mb-6 rounded-3xl bg-white p-6 shadow-sm">
-            <h2 className="mb-5 text-2xl font-semibold">
-              Add New Meal
-            </h2>
+            <h2 className="mb-5 text-2xl font-semibold">Add New Meal</h2>
 
-            <div className="flex flex-col gap-3 md:flex-row">
+            <div className="grid gap-3 md:grid-cols-[1fr_220px_auto]">
               <input
                 value={newMealTitle}
                 onChange={(event) => setNewMealTitle(event.target.value)}
-                className="flex-1 rounded-2xl border border-slate-200 p-4 text-lg"
+                className="rounded-2xl border border-slate-200 p-4 text-lg"
                 placeholder="e.g. Chicken fajitas"
               />
+
+              <select
+                value={newMealStaple}
+                onChange={(event) => setNewMealStaple(event.target.value)}
+                className="rounded-2xl border border-slate-200 bg-white p-4 text-lg"
+              >
+                <option value="">Staple</option>
+                {stapleOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
 
               <button
                 onClick={addNewMeal}
@@ -236,10 +271,8 @@ export default function ParentMealsPage() {
             </div>
           </section>
 
-          <section className="rounded-3xl bg-white p-6 shadow-sm">
-            <h2 className="mb-5 text-2xl font-semibold">
-              Meals This Week
-            </h2>
+          <section className="mb-6 rounded-3xl bg-white p-6 shadow-sm">
+            <h2 className="mb-5 text-2xl font-semibold">Meals This Week</h2>
 
             <div className="space-y-4">
               {days.slice(1).map((day, index) => {
@@ -251,9 +284,7 @@ export default function ParentMealsPage() {
                     key={day}
                     className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-[160px_1fr_1fr]"
                   >
-                    <div className="text-xl font-semibold">
-                      {day}
-                    </div>
+                    <div className="text-xl font-semibold">{day}</div>
 
                     <select
                       value={plan?.meal_id || ''}
@@ -267,6 +298,7 @@ export default function ParentMealsPage() {
                       {meals.map((meal) => (
                         <option key={meal.id} value={meal.id}>
                           {meal.title}
+                          {meal.staple ? ` (${meal.staple})` : ''}
                         </option>
                       ))}
                     </select>
@@ -284,25 +316,36 @@ export default function ParentMealsPage() {
               })}
             </div>
           </section>
-<br />
-          <section className="mb-6 rounded-3xl bg-white p-6 shadow-sm">
-            <h2 className="mb-5 text-2xl font-semibold">
-              Existing Meals
-            </h2>
+
+          <section className="rounded-3xl bg-white p-6 shadow-sm">
+            <h2 className="mb-5 text-2xl font-semibold">Existing Meals</h2>
 
             <div className="space-y-3">
               {meals.map((meal) => (
                 <div
                   key={meal.id}
-                  className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-[1fr_1fr_auto]"
+                  className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-[1fr_180px_1fr_auto]"
                 >
                   <input
                     value={meal.title}
-                    onChange={(event) =>
-                      updateMeal(meal.id, event.target.value)
-                    }
+                    onChange={(event) => updateMeal(meal.id, event.target.value)}
                     className="rounded-xl border border-slate-200 bg-white p-3"
                   />
+
+                  <select
+                    value={meal.staple || ''}
+                    onChange={(event) =>
+                      updateMealStaple(meal.id, event.target.value)
+                    }
+                    className="rounded-xl border border-slate-200 bg-white p-3"
+                  >
+                    <option value="">No staple</option>
+                    {stapleOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
 
                   <input
                     value={meal.notes || ''}
@@ -323,8 +366,6 @@ export default function ParentMealsPage() {
               ))}
             </div>
           </section>
-
-          
         </ParentGate>
       </div>
     </main>
