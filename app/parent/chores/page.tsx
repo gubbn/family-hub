@@ -16,6 +16,8 @@ type Chore = {
   id: string
   title: string
   points: number
+  frequency: string | null
+  shared_completion: boolean | null
 }
 
 type ChoreAssignment = {
@@ -30,6 +32,8 @@ export default function ParentChoresPage() {
   const [assignments, setAssignments] = useState<ChoreAssignment[]>([])
   const [newChoreTitle, setNewChoreTitle] = useState('')
   const [newChorePoints, setNewChorePoints] = useState('1')
+  const [newFrequency, setNewFrequency] = useState('daily')
+  const [newSharedCompletion, setNewSharedCompletion] = useState(false)
   const [selectedMembers, setSelectedMembers] = useState<string[]>([])
   const [status, setStatus] = useState('')
 
@@ -41,7 +45,7 @@ export default function ParentChoresPage() {
 
     const { data: choresData } = await supabase
       .from('chores')
-      .select('id, title, points')
+      .select('id, title, points, frequency, shared_completion')
       .order('title')
 
     const { data: assignmentData } = await supabase
@@ -84,6 +88,8 @@ export default function ParentChoresPage() {
       .insert({
         title: trimmedTitle,
         points: Number(newChorePoints) || 1,
+        frequency: newFrequency,
+        shared_completion: newSharedCompletion,
         active: true,
       })
       .select('id')
@@ -115,9 +121,35 @@ export default function ParentChoresPage() {
 
     setNewChoreTitle('')
     setNewChorePoints('1')
+    setNewFrequency('daily')
+    setNewSharedCompletion(false)
     setSelectedMembers([])
     setStatus('Chore added')
     await loadData()
+  }
+
+  async function updateChore(
+    choreId: string,
+    updates: Partial<Chore>
+  ) {
+    const { error } = await supabase
+      .from('chores')
+      .update(updates)
+      .eq('id', choreId)
+
+    if (error) {
+      console.error('Update chore error:', error)
+      setStatus('Could not update chore')
+      return
+    }
+
+    setChores((current) =>
+      current.map((chore) =>
+        chore.id === choreId ? { ...chore, ...updates } : chore
+      )
+    )
+
+    setStatus('Chore updated')
   }
 
   async function toggleAssignment(choreId: string, memberId: string) {
@@ -212,14 +244,39 @@ export default function ParentChoresPage() {
                 placeholder="Chore title"
               />
 
-              <input
-                type="number"
-                min="1"
-                value={newChorePoints}
-                onChange={(event) => setNewChorePoints(event.target.value)}
-                className="rounded-2xl border border-slate-200 p-4 text-lg"
-                placeholder="Points"
-              />
+              <div className="grid gap-4 md:grid-cols-3">
+                <input
+                  type="number"
+                  min="1"
+                  value={newChorePoints}
+                  onChange={(event) => setNewChorePoints(event.target.value)}
+                  className="rounded-2xl border border-slate-200 p-4 text-lg"
+                  placeholder="Points"
+                />
+
+                <select
+                  value={newFrequency}
+                  onChange={(event) => setNewFrequency(event.target.value)}
+                  className="rounded-2xl border border-slate-200 p-4 text-lg"
+                >
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="ad-hoc">Ad-hoc</option>
+                </select>
+
+                <button
+                  onClick={() =>
+                    setNewSharedCompletion((current) => !current)
+                  }
+                  className={`rounded-2xl border p-4 text-left text-lg transition ${
+                    newSharedCompletion
+                      ? 'border-green-500 bg-green-100 text-green-800'
+                      : 'border-slate-200 bg-white hover:bg-slate-50'
+                  }`}
+                >
+                  {newSharedCompletion ? '✅' : '⬜'} Shared
+                </button>
+              </div>
 
               <div>
                 <h3 className="mb-3 text-sm font-semibold text-slate-600">
@@ -268,16 +325,57 @@ export default function ParentChoresPage() {
                   key={chore.id}
                   className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
                 >
-                  <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <div className="text-lg font-semibold">
-                        {chore.title}
-                      </div>
+                  <div className="mb-4 grid gap-3 md:grid-cols-[1fr_120px_160px_160px_auto]">
+                    <input
+                      value={chore.title}
+                      onChange={(event) =>
+                        updateChore(chore.id, {
+                          title: event.target.value,
+                        })
+                      }
+                      className="rounded-xl border border-slate-200 bg-white p-3"
+                    />
 
-                      <div className="text-sm text-slate-500">
-                        {chore.points} points
-                      </div>
-                    </div>
+                    <input
+                      type="number"
+                      min="1"
+                      value={chore.points}
+                      onChange={(event) =>
+                        updateChore(chore.id, {
+                          points: Number(event.target.value) || 1,
+                        })
+                      }
+                      className="rounded-xl border border-slate-200 bg-white p-3"
+                    />
+
+                    <select
+                      value={chore.frequency || 'daily'}
+                      onChange={(event) =>
+                        updateChore(chore.id, {
+                          frequency: event.target.value,
+                        })
+                      }
+                      className="rounded-xl border border-slate-200 bg-white p-3"
+                    >
+                      <option value="daily">Daily</option>
+                      <option value="weekly">Weekly</option>
+                      <option value="ad-hoc">Ad-hoc</option>
+                    </select>
+
+                    <button
+                      onClick={() =>
+                        updateChore(chore.id, {
+                          shared_completion: !chore.shared_completion,
+                        })
+                      }
+                      className={`rounded-xl border px-4 py-2 text-sm transition ${
+                        chore.shared_completion
+                          ? 'border-green-500 bg-green-100 text-green-800'
+                          : 'border-slate-200 bg-white hover:bg-slate-50'
+                      }`}
+                    >
+                      {chore.shared_completion ? '✅ Shared' : '⬜ Personal'}
+                    </button>
 
                     <button
                       onClick={() => deleteChore(chore.id)}
