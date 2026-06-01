@@ -39,6 +39,12 @@ const parentCards = [
   href: '/parent/routines',
   emoji: '🌅',
 },
+{
+  title: 'Settings',
+  description: 'Manage home postcode and family app settings.',
+  href: '/parent/settings',
+  emoji: '⚙️',
+},
 ]
 
 export default function ParentPage() {
