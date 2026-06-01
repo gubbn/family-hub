@@ -137,18 +137,28 @@ async function rateMeal(mealId: string, rating: number) {
     )?.rating
   }
 
-  function getMealRatingSummary(mealId: string) {
-    const mealRatings = ratings.filter((rating) => rating.meal_id === mealId)
+function getMealRatingSummary(mealId: string) {
+  const mealRatings = ratings.filter(
+    (rating) => rating.meal_id === mealId
+  )
 
-    const keep = mealRatings.filter((rating) => rating.rating === 'keep').length
-    const rerate = mealRatings.filter((rating) => rating.rating === 'rerate').length
-
+  if (mealRatings.length === 0) {
     return {
-      keep,
-      rerate,
-      total: mealRatings.length,
+      average: null,
+      count: 0,
     }
   }
+
+  const total = mealRatings.reduce(
+    (sum, rating) => sum + rating.rating,
+    0
+  )
+
+  return {
+    average: Math.round((total / mealRatings.length) * 10) / 10,
+    count: mealRatings.length,
+  }
+}
 
   return (
     <main className="min-h-screen bg-slate-100 p-6 text-slate-900">
@@ -229,10 +239,22 @@ async function rateMeal(mealId: string, rating: number) {
                       )}
                     </div>
 
-                    <div className="rounded-xl bg-white px-4 py-3 text-sm text-slate-600">
-                      <div>👍 {summary.keep} keep</div>
-                      <div>👎 {summary.rerate} re-rate</div>
-                    </div>
+<div className="rounded-xl bg-white px-4 py-3 text-sm text-slate-600">
+  {summary.average ? (
+    <>
+      <div className="font-semibold">
+        ⭐ {summary.average}/5
+      </div>
+
+      <div>
+        {summary.count} rating
+        {summary.count !== 1 ? 's' : ''}
+      </div>
+    </>
+  ) : (
+    <div>No ratings yet</div>
+  )}
+</div>
                   </div>
 
                  {memberRating && !reratingMealIds.includes(meal.id) ? (
