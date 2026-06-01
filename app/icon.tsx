@@ -5,7 +5,6 @@ import Link from 'next/link'
 import NavBar from '../components/NavBar'
 import WeatherCard from '../components/WeatherCard'
 import { supabase } from '../lib/supabaseClient'
-import DogWalkSuggestion from '../components/DogWalkSuggestion'
 
 type MealPlanItem = {
   day_of_week: number
@@ -15,8 +14,6 @@ type MealPlanItem = {
 
 type Completion = {
   completed_by: string | null
-  chore_id?: string
-  completed_at?: string
   chores: { points: number } | { points: number }[] | null
 }
 
@@ -36,20 +33,6 @@ type WeeklyEvent = {
   notes: string | null
 }
 
-type DashboardChore = {
-  id: string
-  title: string
-  points: number
-  frequency: 'daily' | 'weekly' | 'adhoc' | null
-  shared_completion: boolean | null
-}
-
-type ChoreAssignment = {
-  chore_id: string
-  family_member_id: string
-  chores: DashboardChore | DashboardChore[] | null
-}
-
 const dashboardCards = [
   { title: 'Chores', href: '/chores', emoji: '🧹' },
   { title: 'Routines', href: '/routines', emoji: '🌅' },
@@ -59,26 +42,11 @@ const dashboardCards = [
   { title: 'Parent Zone', href: '/parent', emoji: '🔐' },
 ]
 
-function getTodayDate() {
-  return new Date().toISOString().split('T')[0]
-}
-
-function getWeekStartDate() {
-  const now = new Date()
-  const day = now.getDay()
-  const diff = day === 0 ? -6 : 1 - day
-  const monday = new Date(now)
-  monday.setDate(now.getDate() + diff)
-  return monday.toISOString().split('T')[0]
-}
-
 export default function Home() {
   const [mealPlan, setMealPlan] = useState<MealPlanItem[]>([])
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([])
   const [points, setPoints] = useState<Record<string, number>>({})
   const [events, setEvents] = useState<WeeklyEvent[]>([])
-  const [choreAssignments, setChoreAssignments] = useState<ChoreAssignment[]>([])
-  const [choreCompletions, setChoreCompletions] = useState<Completion[]>([])
   const [loading, setLoading] = useState(true)
 
   const todayNumber = (() => {
@@ -89,7 +57,7 @@ export default function Home() {
   async function loadDashboardData() {
     setLoading(true)
 
-    const today = getTodayDate()
+    const today = new Date().toISOString().split('T')[0]
 
     const { data: mealData } = await supabase
       .from('meal_plan')
@@ -104,32 +72,11 @@ export default function Home() {
     const { data: membersData } = await supabase
       .from('family_members')
       .select('id, name, avatar_emoji')
-      .order('display_order')
 
     const { data: completedData } = await supabase
       .from('chore_completions')
-      .select(`
-        chore_id,
-        completed_by,
-        completed_at,
-        chores (
-          points
-        )
-      `)
-
-    const { data: assignmentData } = await supabase
-      .from('chore_assignments')
-      .select(`
-        chore_id,
-        family_member_id,
-        chores (
-          id,
-          title,
-          points,
-          frequency,
-          shared_completion
-        )
-      `)
+      .select('completed_by, chores(points)')
+      .gte('completed_at', today)
 
     const { data: eventsData } = await supabase
       .from('weekly_events')
@@ -141,23 +88,19 @@ export default function Home() {
     setMealPlan(mealData || [])
     setFamilyMembers(membersData || [])
     setEvents(eventsData || [])
-    setChoreAssignments((assignmentData as ChoreAssignment[]) || [])
-    setChoreCompletions((completedData as Completion[]) || [])
 
     const totals: Record<string, number> = {}
 
-    ;((completedData as Completion[]) || [])
-      .filter((completion) => completion.completed_at && completion.completed_at >= today)
-      .forEach((completion) => {
-        if (!completion.completed_by) return
+    ;(completedData as Completion[] | null)?.forEach((completion) => {
+      if (!completion.completed_by) return
 
-        const chorePoints = Array.isArray(completion.chores)
-          ? completion.chores[0]?.points || 0
-          : completion.chores?.points || 0
+      const chorePoints = Array.isArray(completion.chores)
+        ? completion.chores[0]?.points || 0
+        : completion.chores?.points || 0
 
-        totals[completion.completed_by] =
-          (totals[completion.completed_by] || 0) + chorePoints
-      })
+      totals[completion.completed_by] =
+        (totals[completion.completed_by] || 0) + chorePoints
+    })
 
     setPoints(totals)
     setLoading(false)
@@ -209,72 +152,6 @@ export default function Home() {
       total: points[member.id] || 0,
     }))
     .sort((a, b) => b.total - a.total)
-
-  const choreSummary = useMemo(() => {
-    const today = getTodayDate()
-    const weekStart = getWeekStartDate()
-
-    const uniqueChores = new Map<string, DashboardChore>()
-
-    choreAssignments.forEach((assignment) => {
-      if (!assignment.chores) return
-
-      const chores = Array.isArray(assignment.chores)
-        ? assignment.chores
-        : [assignment.chores]
-
-      chores.forEach((chore) => {
-        uniqueChores.set(chore.id, chore)
-      })
-    })
-
-    const chores = Array.from(uniqueChores.values())
-
-    const completedToday = choreCompletions.filter(
-      (completion) => completion.completed_at && completion.completed_at >= today
-    )
-
-    const pointsToday = completedToday.reduce((total, completion) => {
-      const chorePoints = Array.isArray(completion.chores)
-        ? completion.chores[0]?.points || 0
-        : completion.chores?.points || 0
-
-      return total + chorePoints
-    }, 0)
-
-    const dueToday = chores.filter((chore) => {
-      const frequency = chore.frequency || 'daily'
-
-      const relevantCompletions = choreCompletions.filter((completion) => {
-        if (completion.chore_id !== chore.id) return false
-        return true
-      })
-
-      if (frequency === 'daily') {
-        return !relevantCompletions.some(
-          (completion) => completion.completed_at && completion.completed_at >= today
-        )
-      }
-
-      if (frequency === 'weekly') {
-        return !relevantCompletions.some(
-          (completion) => completion.completed_at && completion.completed_at >= weekStart
-        )
-      }
-
-      if (frequency === 'adhoc') {
-        return relevantCompletions.length === 0
-      }
-
-      return true
-    })
-
-    return {
-      dueToday: dueToday.length,
-      completedToday: completedToday.length,
-      pointsToday,
-    }
-  }, [choreAssignments, choreCompletions])
 
   return (
     <main className="min-h-screen bg-slate-100 p-4 text-slate-900">
@@ -399,74 +276,20 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="mb-4 rounded-2xl bg-white p-5 shadow-sm">
-  <h2 className="mb-4 text-xl font-semibold">🎉 Family Wins</h2>
+        <section className="grid gap-4 md:grid-cols-3">
+          {dashboardCards.map((card) => (
+            <Link
+              key={card.href}
+              href={card.href}
+              className="rounded-2xl bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+            >
+              <div className="mb-2 text-4xl">{card.emoji}</div>
 
-  <div className="grid gap-3 md:grid-cols-2">
-    <div className="rounded-xl bg-yellow-50 p-4">
-      <div className="text-sm font-medium text-yellow-700">
-        Current leader
-      </div>
-      <div className="mt-1 text-lg font-bold">
-        {leaderboard[0]
-          ? `${leaderboard[0].avatar_emoji || '🙂'} ${leaderboard[0].name} with ${leaderboard[0].total} points`
-          : 'No points yet'}
-      </div>
-    </div>
-
-    <div className="rounded-xl bg-green-50 p-4">
-      <div className="text-sm font-medium text-green-700">
-        Chore progress
-      </div>
-      <div className="mt-1 text-lg font-bold">
-        {choreSummary.completedToday} completed today
-      </div>
-    </div>
-
-    <div className="rounded-xl bg-blue-50 p-4">
-      <div className="text-sm font-medium text-blue-700">
-        Dog walk
-      </div>
-      <div className="mt-1 text-lg font-bold">
-        <DogWalkSuggestion />
-      </div>
-    </div>
-  </div>
-</section>
-
-        <section className="mb-4 grid gap-4 md:grid-cols-3">
-          <div className="rounded-2xl bg-white p-5 shadow-sm">
-            <div className="text-3xl">🧹</div>
-            <div className="mt-2 text-sm font-medium text-slate-500">
-              Chores due
-            </div>
-            <div className="text-3xl font-bold text-slate-900">
-              {choreSummary.dueToday}
-            </div>
-          </div>
-
-          <div className="rounded-2xl bg-white p-5 shadow-sm">
-            <div className="text-3xl">✅</div>
-            <div className="mt-2 text-sm font-medium text-slate-500">
-              Completed today
-            </div>
-            <div className="text-3xl font-bold text-slate-900">
-              {choreSummary.completedToday}
-            </div>
-          </div>
-
-          <div className="rounded-2xl bg-white p-5 shadow-sm">
-            <div className="text-3xl">⭐</div>
-            <div className="mt-2 text-sm font-medium text-slate-500">
-              Points earned today
-            </div>
-            <div className="text-3xl font-bold text-slate-900">
-              {choreSummary.pointsToday}
-            </div>
-          </div>
+              <h2 className="text-xl font-semibold">{card.title}</h2>
+            </Link>
+          ))}
         </section>
-
-  </div>
+      </div>
     </main>
   )
 }
