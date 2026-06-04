@@ -9,9 +9,16 @@ export default function ParentSettingsPage() {
   const [postcode, setPostcode] = useState('')
   const [pin, setPin] = useState('')
 
+  const [mealRules, setMealRules] = useState({
+    chicken: '2',
+    beef: '1',
+    vegetarian: '1',
+    fish: '1',
+    quickMeal: '1',
+  })
+
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
 
@@ -21,11 +28,25 @@ export default function ParentSettingsPage() {
         const savedPostcode = await getSetting('home_postcode')
         const savedPin = await getSetting('parent_pin')
 
+        const chickenRule = await getSetting('meal_rule_chicken')
+        const beefRule = await getSetting('meal_rule_beef')
+        const vegetarianRule = await getSetting('meal_rule_vegetarian')
+        const fishRule = await getSetting('meal_rule_fish')
+        const quickMealRule = await getSetting('meal_rule_quick_meal')
+
         setPostcode(savedPostcode || '')
         setPin(savedPin || '')
+
+        setMealRules({
+          chicken: chickenRule || '2',
+          beef: beefRule || '1',
+          vegetarian: vegetarianRule || '1',
+          fish: fishRule || '1',
+          quickMeal: quickMealRule || '1',
+        })
       } catch (error) {
-        console.error('Load settings failed:', error)
-        setError('Could not load settings.')
+        console.error(error)
+        setError('Could not load settings')
       } finally {
         setLoading(false)
       }
@@ -40,21 +61,40 @@ export default function ParentSettingsPage() {
     setError('')
 
     try {
-      const cleanPostcode = postcode.trim().toUpperCase()
-      const cleanPin = pin.trim()
+      await updateSetting(
+        'home_postcode',
+        postcode.trim().toUpperCase()
+      )
 
-      if (!cleanPostcode) {
-        setError('Please enter a postcode.')
-        return
-      }
+      await updateSetting(
+        'parent_pin',
+        pin.trim()
+      )
 
-      if (!cleanPin) {
-        setError('Please enter a PIN.')
-        return
-      }
+      await updateSetting(
+        'meal_rule_chicken',
+        mealRules.chicken
+      )
 
-      await updateSetting('home_postcode', cleanPostcode)
-      await updateSetting('parent_pin', cleanPin)
+      await updateSetting(
+        'meal_rule_beef',
+        mealRules.beef
+      )
+
+      await updateSetting(
+        'meal_rule_vegetarian',
+        mealRules.vegetarian
+      )
+
+      await updateSetting(
+        'meal_rule_fish',
+        mealRules.fish
+      )
+
+      await updateSetting(
+        'meal_rule_quick_meal',
+        mealRules.quickMeal
+      )
 
       setSaved(true)
 
@@ -63,7 +103,7 @@ export default function ParentSettingsPage() {
       }, 3000)
     } catch (error) {
       console.error(error)
-      setError('Failed to save settings.')
+      setError('Failed to save settings')
     } finally {
       setSaving(false)
     }
@@ -80,33 +120,26 @@ export default function ParentSettingsPage() {
 
         <ParentGate>
           <section className="rounded-3xl bg-white p-6 shadow-sm">
-            <h2 className="mb-2 text-2xl font-semibold">
+            <h2 className="mb-6 text-2xl font-semibold">
               Family Settings
             </h2>
-
-            <p className="mb-6 text-sm text-slate-500">
-              Configure household information used throughout the dashboard.
-            </p>
 
             {loading ? (
               <p className="text-slate-500">
                 Loading settings...
               </p>
             ) : (
-              <div className="space-y-6">
+              <div className="space-y-8">
                 <div>
-                  <label
-                    htmlFor="postcode"
-                    className="mb-2 block text-sm font-medium text-slate-700"
-                  >
+                  <label className="mb-2 block text-sm font-medium">
                     Home Postcode
                   </label>
 
                   <input
-                    id="postcode"
                     value={postcode}
-                    onChange={(e) => setPostcode(e.target.value)}
-                    placeholder="RG1 1AA"
+                    onChange={(e) =>
+                      setPostcode(e.target.value)
+                    }
                     className="w-full rounded-xl border border-slate-300 px-4 py-3"
                   />
 
@@ -116,19 +149,16 @@ export default function ParentSettingsPage() {
                 </div>
 
                 <div>
-                  <label
-                    htmlFor="pin"
-                    className="mb-2 block text-sm font-medium text-slate-700"
-                  >
+                  <label className="mb-2 block text-sm font-medium">
                     Parent Zone PIN
                   </label>
 
                   <input
-                    id="pin"
                     type="password"
                     value={pin}
-                    onChange={(e) => setPin(e.target.value)}
-                    placeholder="1234"
+                    onChange={(e) =>
+                      setPin(e.target.value)
+                    }
                     className="w-full rounded-xl border border-slate-300 px-4 py-3"
                   />
 
@@ -137,22 +167,89 @@ export default function ParentSettingsPage() {
                   </p>
                 </div>
 
+                <div className="rounded-2xl bg-slate-50 p-5">
+                  <h3 className="mb-2 text-xl font-semibold">
+                    Meal Generator Rules
+                  </h3>
+
+                  <p className="mb-5 text-sm text-slate-500">
+                    Control how automatic menu generation balances meals.
+                  </p>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <RuleInput
+                      label="Chicken meals"
+                      value={mealRules.chicken}
+                      onChange={(value) =>
+                        setMealRules((current) => ({
+                          ...current,
+                          chicken: value,
+                        }))
+                      }
+                    />
+
+                    <RuleInput
+                      label="Beef meals"
+                      value={mealRules.beef}
+                      onChange={(value) =>
+                        setMealRules((current) => ({
+                          ...current,
+                          beef: value,
+                        }))
+                      }
+                    />
+
+                    <RuleInput
+                      label="Vegetarian meals"
+                      value={mealRules.vegetarian}
+                      onChange={(value) =>
+                        setMealRules((current) => ({
+                          ...current,
+                          vegetarian: value,
+                        }))
+                      }
+                    />
+
+                    <RuleInput
+                      label="Fish meals"
+                      value={mealRules.fish}
+                      onChange={(value) =>
+                        setMealRules((current) => ({
+                          ...current,
+                          fish: value,
+                        }))
+                      }
+                    />
+
+                    <RuleInput
+                      label="Quick meals"
+                      value={mealRules.quickMeal}
+                      onChange={(value) =>
+                        setMealRules((current) => ({
+                          ...current,
+                          quickMeal: value,
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+
                 <button
                   onClick={saveSettings}
                   disabled={saving}
-                  className="rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700 disabled:bg-slate-400"
+                  className="rounded-xl bg-blue-600 px-6 py-3 font-semibold text-white hover:bg-blue-700 disabled:bg-slate-400"
                 >
                   {saving ? 'Saving...' : 'Save Settings'}
                 </button>
 
                 {saved && (
-                  <p className="text-green-600">
-                    ✅ Settings saved successfully.
+                  <p className="font-medium text-green-600">
+                    ✅ Settings saved
                   </p>
                 )}
 
                 {error && (
-                  <p className="text-red-600">
+                  <p className="font-medium text-red-600">
                     {error}
                   </p>
                 )}
@@ -162,5 +259,34 @@ export default function ParentSettingsPage() {
         </ParentGate>
       </div>
     </main>
+  )
+}
+
+type RuleInputProps = {
+  label: string
+  value: string
+  onChange: (value: string) => void
+}
+
+function RuleInput({
+  label,
+  value,
+  onChange,
+}: RuleInputProps) {
+  return (
+    <div>
+      <label className="mb-2 block text-sm font-medium">
+        {label}
+      </label>
+
+      <input
+        type="number"
+        min="0"
+        max="7"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded-xl border border-slate-300 px-4 py-3"
+      />
+    </div>
   )
 }

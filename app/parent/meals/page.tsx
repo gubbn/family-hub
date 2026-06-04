@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '../../../lib/supabaseClient'
+import { getSetting } from '../../../lib/settings'
 import NavBar from '../../../components/NavBar'
 import ParentGate from '../../../components/ParentGate'
 import ParentBackButton from '../../../components/ParentBackButton'
@@ -44,11 +45,22 @@ type MealPlan = {
   notes: string | null
 }
 
+type MealRating = {
+  meal_id: string
+  rating: number
+}
+
+type GeneratedMeal = Meal & {
+  average: number
+  alreadyUsed: boolean
+}
+
 export default function ParentMealsPage() {
   const [meals, setMeals] = useState<Meal[]>([])
   const [mealPlan, setMealPlan] = useState<MealPlan[]>([])
   const [newMealTitle, setNewMealTitle] = useState('')
   const [newMealStaple, setNewMealStaple] = useState('')
+  const [generatedMenu, setGeneratedMenu] = useState<GeneratedMeal[]>([])
   const [status, setStatus] = useState('')
 
   async function loadData() {
@@ -61,11 +73,18 @@ export default function ParentMealsPage() {
       .from('meal_plan')
       .select('id, day_of_week, meal_id, notes')
 
-    if (mealsError) console.error('Load meals error:', mealsError)
-    if (planError) console.error('Load meal plan error:', planError)
+    if (mealsError) {
+      console.error('Load meals error:', mealsError)
+      setStatus('Could not load meals')
+    }
+
+    if (planError) {
+      console.error('Load meal plan error:', planError)
+      setStatus('Could not load meal plan')
+    }
 
     setMeals((mealsData as Meal[]) || [])
-    setMealPlan(planData || [])
+    setMealPlan((planData as MealPlan[]) || [])
   }
 
   function getPlanForDay(day: number) {
@@ -175,10 +194,9 @@ export default function ParentMealsPage() {
         day_of_week: day,
         meal_id: mealId || null,
         notes: existing?.notes || null,
+        active: true,
       },
-      {
-        onConflict: 'day_of_week',
-      }
+      { onConflict: 'day_of_week' }
     )
 
     if (error) {
@@ -200,10 +218,9 @@ export default function ParentMealsPage() {
         day_of_week: day,
         meal_id: existing?.meal_id || null,
         notes,
+        active: true,
       },
-      {
-        onConflict: 'day_of_week',
-      }
+      { onConflict: 'day_of_week' }
     )
 
     if (error) {
@@ -213,6 +230,163 @@ export default function ParentMealsPage() {
     }
 
     setStatus('Notes saved')
+    await loadData()
+  }
+
+  async function buildGeneratedMenu() {
+    const { data: mealsData, error: mealsError } = await supabase
+      .from('meals')
+      .select('id, title, notes, staple')
+
+    const { data: ratingsData, error: ratingsError } = await supabase
+      .from('meal_ratings')
+      .select('meal_id, rating')
+
+    if (mealsError || ratingsError) {
+      console.error('Generate menu error:', mealsError || ratingsError)
+      setStatus('Could not generate menu')
+      return []
+    }
+
+    const allMeals = (mealsData as Meal[]) || []
+    const ratings = (ratingsData as MealRating[]) || []
+
+    if (allMeals.length < 7) {
+      setStatus('You need at least 7 meals before generating a full week')
+      return []
+    }
+
+    const chickenRule = Number((await getSetting('meal_rule_chicken')) || 2)
+    const beefRule = Number((await getSetting('meal_rule_beef')) || 1)
+    const vegetarianRule = Number(
+      (await getSetting('meal_rule_vegetarian')) || 1
+    )
+    const fishRule = Number((await getSetting('meal_rule_fish')) || 1)
+    const quickMealRule = Number(
+      (await getSetting('meal_rule_quick_meal')) || 1
+    )
+
+    const targetStaples: string[] = [
+      ...Array(chickenRule).fill('Chicken'),
+      ...Array(beefRule).fill('Beef'),
+      ...Array(vegetarianRule).fill('Vegetarian'),
+      ...Array(fishRule).fill('Fish'),
+      ...Array(quickMealRule).fill('Quick Meal'),
+    ].slice(0, 7)
+
+    const currentMealIds = mealPlan.map((plan) => plan.meal_id).filter(Boolean)
+
+    const scoredMeals: GeneratedMeal[] = allMeals.map((meal) => {
+      const mealRatings = ratings.filter((rating) => rating.meal_id === meal.id)
+
+      const average =
+        mealRatings.length === 0
+          ? 3
+          : mealRatings.reduce((sum, rating) => sum + rating.rating, 0) /
+            mealRatings.length
+
+      return {
+        ...meal,
+        average,
+        alreadyUsed: currentMealIds.includes(meal.id),
+      }
+    })
+
+    const selectedMeals: GeneratedMeal[] = []
+
+    function pickMealByStaple(staple: string) {
+      const match = scoredMeals
+        .filter(
+          (meal) =>
+            meal.staple === staple &&
+            !selectedMeals.some((selected) => selected.id === meal.id)
+        )
+        .sort((a, b) => {
+          if (a.alreadyUsed !== b.alreadyUsed) {
+            return a.alreadyUsed ? 1 : -1
+          }
+
+          return b.average - a.average
+        })[0]
+
+      if (match) {
+        selectedMeals.push(match)
+      }
+    }
+
+    targetStaples.forEach((staple) => {
+      pickMealByStaple(staple)
+    })
+
+    const fillerMeals = scoredMeals
+      .filter(
+        (meal) => !selectedMeals.some((selected) => selected.id === meal.id)
+      )
+      .sort((a, b) => {
+        if (a.alreadyUsed !== b.alreadyUsed) {
+          return a.alreadyUsed ? 1 : -1
+        }
+
+        return b.average - a.average
+      })
+
+    while (selectedMeals.length < 7 && fillerMeals.length > 0) {
+      const nextMeal = fillerMeals.shift()
+
+      if (nextMeal) {
+        selectedMeals.push(nextMeal)
+      }
+    }
+
+    if (selectedMeals.length < 7) {
+      setStatus('Could not find enough meals to build a full menu')
+      return []
+    }
+
+    return selectedMeals
+  }
+
+  async function generateNextWeekMenu() {
+    setStatus('Generating menu preview...')
+
+    const selectedMeals = await buildGeneratedMenu()
+
+    if (selectedMeals.length !== 7) return
+
+    setGeneratedMenu(selectedMeals)
+    setStatus('Menu preview generated. Confirm to save it.')
+  }
+
+  async function confirmGeneratedMenu() {
+    if (generatedMenu.length !== 7) {
+      setStatus('Generate a full menu first')
+      return
+    }
+
+    for (let day = 1; day <= 7; day++) {
+      const existing = getPlanForDay(day)
+      const selectedMeal = generatedMenu[day - 1]
+
+      const { error } = await supabase.from('meal_plan').upsert(
+        {
+          id: existing?.id,
+          day_of_week: day,
+          meal_id: selectedMeal.id,
+          notes: existing?.notes || null,
+          active: true,
+        },
+        { onConflict: 'day_of_week' }
+      )
+
+      if (error) {
+        console.error('Confirm generated menu error:', error)
+        setStatus('Could not save generated menu')
+        return
+      }
+    }
+
+    setGeneratedMenu([])
+    setStatus('Generated menu saved')
     await loadData()
   }
 
@@ -272,6 +446,75 @@ export default function ParentMealsPage() {
           </section>
 
           <section className="mb-6 rounded-3xl bg-white p-6 shadow-sm">
+            <h2 className="mb-2 text-2xl font-semibold">Generate Menu</h2>
+
+            <p className="mb-4 text-sm text-slate-500">
+              Pick 7 meals automatically using your generator rules, ratings and
+              staple tags.
+            </p>
+
+            <button
+              onClick={generateNextWeekMenu}
+              className="rounded-2xl bg-green-600 px-6 py-4 text-lg font-semibold text-white hover:bg-green-700"
+            >
+              Generate menu preview
+            </button>
+
+            {generatedMenu.length > 0 && (
+              <div className="mt-6 rounded-2xl bg-slate-50 p-4">
+                <h3 className="mb-3 text-xl font-semibold">
+                  Suggested Menu Preview
+                </h3>
+
+                <div className="space-y-2">
+                  {generatedMenu.map((meal, index) => (
+                    <div
+                      key={meal.id}
+                      className="rounded-xl bg-white p-3"
+                    >
+                      <div className="font-semibold">
+                        {days[index + 1]}: {meal.title}
+                      </div>
+
+                      <div className="text-sm text-slate-500">
+                        {meal.staple || 'No staple'} · ⭐{' '}
+                        {Math.round(meal.average * 10) / 10}/5
+                        {meal.alreadyUsed ? ' · currently on menu' : ''}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <button
+                    onClick={confirmGeneratedMenu}
+                    className="rounded-xl bg-green-600 px-5 py-3 font-semibold text-white hover:bg-green-700"
+                  >
+                    Confirm menu
+                  </button>
+
+                  <button
+                    onClick={generateNextWeekMenu}
+                    className="rounded-xl border border-slate-300 px-5 py-3 font-semibold text-slate-700 hover:bg-white"
+                  >
+                    Regenerate
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setGeneratedMenu([])
+                      setStatus('Menu preview cancelled')
+                    }}
+                    className="rounded-xl border border-red-200 px-5 py-3 font-semibold text-red-600 hover:bg-red-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </section>
+
+          <section className="mb-6 rounded-3xl bg-white p-6 shadow-sm">
             <h2 className="mb-5 text-2xl font-semibold">Meals This Week</h2>
 
             <div className="space-y-4">
@@ -328,7 +571,9 @@ export default function ParentMealsPage() {
                 >
                   <input
                     value={meal.title}
-                    onChange={(event) => updateMeal(meal.id, event.target.value)}
+                    onChange={(event) =>
+                      updateMeal(meal.id, event.target.value)
+                    }
                     className="rounded-xl border border-slate-200 bg-white p-3"
                   />
 
@@ -340,6 +585,7 @@ export default function ParentMealsPage() {
                     className="rounded-xl border border-slate-200 bg-white p-3"
                   >
                     <option value="">No staple</option>
+
                     {stapleOptions.map((option) => (
                       <option key={option} value={option}>
                         {option}
