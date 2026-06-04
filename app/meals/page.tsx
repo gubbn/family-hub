@@ -34,6 +34,12 @@ type MealRating = {
   rating: number
 }
 
+type Meal = {
+  id: string
+  title: string
+  staple?: string | null
+}
+
 const dayNames: Record<number, string> = {
   1: 'Monday',
   2: 'Tuesday',
@@ -51,6 +57,7 @@ export default function MealsPage() {
   const [ratings, setRatings] = useState<MealRating[]>([])
   const [reratingMealIds, setReratingMealIds] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
+  const [allMeals, setAllMeals] = useState<Meal[]>([])
 
   async function loadData() {
     setLoading(true)
@@ -82,10 +89,15 @@ export default function MealsPage() {
 
       const safeMembers = membersData || []
 
+      const { data: allMealsData } = await supabase
+  .from('meals')
+  .select('id, title, staple')
+
       setFamilyMembers(safeMembers)
       setSelectedMember((current) => current || safeMembers[0]?.id || '')
       setMenuMeals((menuData as MenuMeal[]) || [])
       setRatings((ratingsData as MealRating[]) || [])
+      setAllMeals((allMealsData as Meal[]) || [])
     } catch (error) {
       console.error('Load meals failed:', error)
     } finally {
@@ -156,46 +168,34 @@ export default function MealsPage() {
   }
 
   function getRatedMeals() {
-    const mealScores = new Map<
-      string,
-      {
-        id: string
-        title: string
-        staple?: string | null
-        ratings: number[]
-      }
-    >()
-
-    menuMeals.forEach((item) => {
-      const meal = getMealFromPlan(item)
-      if (!meal) return
-
+  return allMeals
+    .map((meal) => {
       const mealRatings = ratings
         .filter((rating) => rating.meal_id === meal.id)
         .map((rating) => rating.rating)
 
-      mealScores.set(meal.id, {
+      if (mealRatings.length === 0) return null
+
+      const average =
+        mealRatings.reduce((sum, rating) => sum + rating, 0) /
+        mealRatings.length
+
+      return {
         id: meal.id,
         title: meal.title,
         staple: meal.staple,
-        ratings: mealRatings,
-      })
+        average: Math.round(average * 10) / 10,
+        count: mealRatings.length,
+      }
     })
-
-    return Array.from(mealScores.values())
-      .filter((meal) => meal.ratings.length > 0)
-      .map((meal) => {
-        const average =
-          meal.ratings.reduce((sum, rating) => sum + rating, 0) /
-          meal.ratings.length
-
-        return {
-          ...meal,
-          average: Math.round(average * 10) / 10,
-          count: meal.ratings.length,
-        }
-      })
-  }
+    .filter(Boolean) as {
+      id: string
+      title: string
+      staple?: string | null
+      average: number
+      count: number
+    }[]
+}
 
   const familyFavourites = getRatedMeals()
     .filter((meal) => meal.average >= 4)
@@ -366,7 +366,7 @@ export default function MealsPage() {
             <h2 className="mb-2 text-2xl font-semibold">⭐ Family Favourites</h2>
 
             <p className="mb-5 text-sm text-slate-500">
-              Highest-rated meals currently on this week&apos;s menu.
+              Highest-rated meals from your full meal library.
             </p>
 
             {familyFavourites.length === 0 ? (
@@ -395,7 +395,7 @@ export default function MealsPage() {
             <h2 className="mb-2 text-2xl font-semibold">⚠️ Needs Review</h2>
 
             <p className="mb-5 text-sm text-slate-500">
-              Meals scoring low enough to review before adding again.
+              Low-rated meals from your full meal library.
             </p>
 
             {needsReview.length === 0 ? (

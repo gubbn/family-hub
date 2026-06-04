@@ -36,6 +36,7 @@ type Meal = {
   title: string
   notes: string | null
   staple: string | null
+  ingredients: string | null
 }
 
 type MealPlan = {
@@ -43,6 +44,7 @@ type MealPlan = {
   day_of_week: number
   meal_id: string | null
   notes: string | null
+  week_start: string | null
 }
 
 type MealRating = {
@@ -52,7 +54,18 @@ type MealRating = {
 
 type GeneratedMeal = Meal & {
   average: number
-  alreadyUsed: boolean
+  recentlyUsed: boolean
+}
+
+function getCurrentWeekStart() {
+  const now = new Date()
+  const day = now.getDay()
+  const diff = day === 0 ? -6 : 1 - day
+  const monday = new Date(now)
+
+  monday.setDate(now.getDate() + diff)
+
+  return monday.toISOString().split('T')[0]
 }
 
 export default function ParentMealsPage() {
@@ -60,18 +73,21 @@ export default function ParentMealsPage() {
   const [mealPlan, setMealPlan] = useState<MealPlan[]>([])
   const [newMealTitle, setNewMealTitle] = useState('')
   const [newMealStaple, setNewMealStaple] = useState('')
+  const [newMealIngredients, setNewMealIngredients] = useState('')
   const [generatedMenu, setGeneratedMenu] = useState<GeneratedMeal[]>([])
   const [status, setStatus] = useState('')
 
   async function loadData() {
     const { data: mealsData, error: mealsError } = await supabase
       .from('meals')
-      .select('id, title, notes, staple')
+      .select('id, title, notes, staple, ingredients')
       .order('created_at', { ascending: false })
 
     const { data: planData, error: planError } = await supabase
       .from('meal_plan')
-      .select('id, day_of_week, meal_id, notes')
+      .select('id, day_of_week, meal_id, notes, week_start')
+      .eq('active', true)
+      .order('day_of_week', { ascending: true })
 
     if (mealsError) {
       console.error('Load meals error:', mealsError)
@@ -103,6 +119,7 @@ export default function ParentMealsPage() {
       title: trimmedTitle,
       notes: null,
       staple: newMealStaple || null,
+      ingredients: newMealIngredients.trim() || null,
     })
 
     if (error) {
@@ -113,6 +130,7 @@ export default function ParentMealsPage() {
 
     setNewMealTitle('')
     setNewMealStaple('')
+    setNewMealIngredients('')
     setStatus('Meal added')
     await loadData()
   }
@@ -172,6 +190,22 @@ export default function ParentMealsPage() {
     await loadData()
   }
 
+  async function updateMealIngredients(mealId: string, ingredients: string) {
+    const { error } = await supabase
+      .from('meals')
+      .update({ ingredients: ingredients || null })
+      .eq('id', mealId)
+
+    if (error) {
+      console.error('Update meal ingredients error:', error)
+      setStatus('Could not update meal ingredients')
+      return
+    }
+
+    setStatus('Meal ingredients updated')
+    await loadData()
+  }
+
   async function deleteMeal(mealId: string) {
     const { error } = await supabase.from('meals').delete().eq('id', mealId)
 
@@ -195,6 +229,7 @@ export default function ParentMealsPage() {
         meal_id: mealId || null,
         notes: existing?.notes || null,
         active: true,
+        week_start: getCurrentWeekStart(),
       },
       { onConflict: 'day_of_week' }
     )
@@ -219,6 +254,7 @@ export default function ParentMealsPage() {
         meal_id: existing?.meal_id || null,
         notes,
         active: true,
+        week_start: getCurrentWeekStart(),
       },
       { onConflict: 'day_of_week' }
     )
@@ -236,14 +272,25 @@ export default function ParentMealsPage() {
   async function buildGeneratedMenu() {
     const { data: mealsData, error: mealsError } = await supabase
       .from('meals')
-      .select('id, title, notes, staple')
+      .select('id, title, notes, staple, ingredients')
 
     const { data: ratingsData, error: ratingsError } = await supabase
       .from('meal_ratings')
       .select('meal_id, rating')
 
-    if (mealsError || ratingsError) {
-      console.error('Generate menu error:', mealsError || ratingsError)
+    const fourWeeksAgo = new Date()
+    fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28)
+
+    const { data: recentPlanData, error: recentPlanError } = await supabase
+      .from('meal_plan')
+      .select('meal_id')
+      .gte('week_start', fourWeeksAgo.toISOString().split('T')[0])
+
+    if (mealsError || ratingsError || recentPlanError) {
+      console.error(
+        'Generate menu error:',
+        mealsError || ratingsError || recentPlanError
+      )
       setStatus('Could not generate menu')
       return []
     }
@@ -255,6 +302,9 @@ export default function ParentMealsPage() {
       setStatus('You need at least 7 meals before generating a full week')
       return []
     }
+
+    const recentMealIds =
+      recentPlanData?.map((plan) => plan.meal_id).filter(Boolean) || []
 
     const chickenRule = Number((await getSetting('meal_rule_chicken')) || 2)
     const beefRule = Number((await getSetting('meal_rule_beef')) || 1)
@@ -274,8 +324,6 @@ export default function ParentMealsPage() {
       ...Array(quickMealRule).fill('Quick Meal'),
     ].slice(0, 7)
 
-    const currentMealIds = mealPlan.map((plan) => plan.meal_id).filter(Boolean)
-
     const scoredMeals: GeneratedMeal[] = allMeals.map((meal) => {
       const mealRatings = ratings.filter((rating) => rating.meal_id === meal.id)
 
@@ -288,7 +336,7 @@ export default function ParentMealsPage() {
       return {
         ...meal,
         average,
-        alreadyUsed: currentMealIds.includes(meal.id),
+        recentlyUsed: recentMealIds.includes(meal.id),
       }
     })
 
@@ -302,8 +350,8 @@ export default function ParentMealsPage() {
             !selectedMeals.some((selected) => selected.id === meal.id)
         )
         .sort((a, b) => {
-          if (a.alreadyUsed !== b.alreadyUsed) {
-            return a.alreadyUsed ? 1 : -1
+          if (a.recentlyUsed !== b.recentlyUsed) {
+            return a.recentlyUsed ? 1 : -1
           }
 
           return b.average - a.average
@@ -323,8 +371,8 @@ export default function ParentMealsPage() {
         (meal) => !selectedMeals.some((selected) => selected.id === meal.id)
       )
       .sort((a, b) => {
-        if (a.alreadyUsed !== b.alreadyUsed) {
-          return a.alreadyUsed ? 1 : -1
+        if (a.recentlyUsed !== b.recentlyUsed) {
+          return a.recentlyUsed ? 1 : -1
         }
 
         return b.average - a.average
@@ -374,6 +422,7 @@ export default function ParentMealsPage() {
           meal_id: selectedMeal.id,
           notes: existing?.notes || null,
           active: true,
+          week_start: getCurrentWeekStart(),
         },
         { onConflict: 'day_of_week' }
       )
@@ -415,33 +464,43 @@ export default function ParentMealsPage() {
           <section className="mb-6 rounded-3xl bg-white p-6 shadow-sm">
             <h2 className="mb-5 text-2xl font-semibold">Add New Meal</h2>
 
-            <div className="grid gap-3 md:grid-cols-[1fr_220px_auto]">
-              <input
-                value={newMealTitle}
-                onChange={(event) => setNewMealTitle(event.target.value)}
-                className="rounded-2xl border border-slate-200 p-4 text-lg"
-                placeholder="e.g. Chicken fajitas"
+            <div className="grid gap-3">
+              <div className="grid gap-3 md:grid-cols-[1fr_220px_auto]">
+                <input
+                  value={newMealTitle}
+                  onChange={(event) => setNewMealTitle(event.target.value)}
+                  className="rounded-2xl border border-slate-200 p-4 text-lg"
+                  placeholder="e.g. Chicken fajitas"
+                />
+
+                <select
+                  value={newMealStaple}
+                  onChange={(event) => setNewMealStaple(event.target.value)}
+                  className="rounded-2xl border border-slate-200 bg-white p-4 text-lg"
+                >
+                  <option value="">Staple</option>
+
+                  {stapleOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  onClick={addNewMeal}
+                  className="rounded-2xl bg-blue-600 px-6 py-4 text-lg font-semibold text-white hover:bg-blue-700"
+                >
+                  Add meal
+                </button>
+              </div>
+
+              <textarea
+                value={newMealIngredients}
+                onChange={(event) => setNewMealIngredients(event.target.value)}
+                className="min-h-28 rounded-2xl border border-slate-200 p-4 text-lg"
+                placeholder="Ingredients, one per line e.g. chicken breast, wraps, peppers"
               />
-
-              <select
-                value={newMealStaple}
-                onChange={(event) => setNewMealStaple(event.target.value)}
-                className="rounded-2xl border border-slate-200 bg-white p-4 text-lg"
-              >
-                <option value="">Staple</option>
-                {stapleOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-
-              <button
-                onClick={addNewMeal}
-                className="rounded-2xl bg-blue-600 px-6 py-4 text-lg font-semibold text-white hover:bg-blue-700"
-              >
-                Add meal
-              </button>
             </div>
           </section>
 
@@ -449,8 +508,8 @@ export default function ParentMealsPage() {
             <h2 className="mb-2 text-2xl font-semibold">Generate Menu</h2>
 
             <p className="mb-4 text-sm text-slate-500">
-              Pick 7 meals automatically using your generator rules, ratings and
-              staple tags.
+              Pick 7 meals automatically using your generator rules, ratings,
+              staple tags and recent menu history.
             </p>
 
             <button
@@ -468,10 +527,7 @@ export default function ParentMealsPage() {
 
                 <div className="space-y-2">
                   {generatedMenu.map((meal, index) => (
-                    <div
-                      key={meal.id}
-                      className="rounded-xl bg-white p-3"
-                    >
+                    <div key={meal.id} className="rounded-xl bg-white p-3">
                       <div className="font-semibold">
                         {days[index + 1]}: {meal.title}
                       </div>
@@ -479,7 +535,7 @@ export default function ParentMealsPage() {
                       <div className="text-sm text-slate-500">
                         {meal.staple || 'No staple'} · ⭐{' '}
                         {Math.round(meal.average * 10) / 10}/5
-                        {meal.alreadyUsed ? ' · currently on menu' : ''}
+                        {meal.recentlyUsed ? ' · used recently' : ''}
                       </div>
                     </div>
                   ))}
@@ -567,47 +623,60 @@ export default function ParentMealsPage() {
               {meals.map((meal) => (
                 <div
                   key={meal.id}
-                  className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-[1fr_180px_1fr_auto]"
+                  className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
                 >
-                  <input
-                    value={meal.title}
-                    onChange={(event) =>
-                      updateMeal(meal.id, event.target.value)
-                    }
-                    className="rounded-xl border border-slate-200 bg-white p-3"
-                  />
+                  <div className="grid gap-3 md:grid-cols-[1fr_180px_auto]">
+                    <input
+                      value={meal.title}
+                      onChange={(event) =>
+                        updateMeal(meal.id, event.target.value)
+                      }
+                      className="rounded-xl border border-slate-200 bg-white p-3"
+                    />
 
-                  <select
-                    value={meal.staple || ''}
-                    onChange={(event) =>
-                      updateMealStaple(meal.id, event.target.value)
-                    }
-                    className="rounded-xl border border-slate-200 bg-white p-3"
-                  >
-                    <option value="">No staple</option>
+                    <select
+                      value={meal.staple || ''}
+                      onChange={(event) =>
+                        updateMealStaple(meal.id, event.target.value)
+                      }
+                      className="rounded-xl border border-slate-200 bg-white p-3"
+                    >
+                      <option value="">No staple</option>
 
-                    {stapleOptions.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
-                  </select>
+                      {stapleOptions.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
 
-                  <input
-                    value={meal.notes || ''}
-                    onChange={(event) =>
-                      updateMealNotes(meal.id, event.target.value)
-                    }
-                    className="rounded-xl border border-slate-200 bg-white p-3"
-                    placeholder="Meal notes"
-                  />
+                    <button
+                      onClick={() => deleteMeal(meal.id)}
+                      className="rounded-xl border border-red-200 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                    >
+                      Delete
+                    </button>
+                  </div>
 
-                  <button
-                    onClick={() => deleteMeal(meal.id)}
-                    className="rounded-xl border border-red-200 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
-                  >
-                    Delete
-                  </button>
+                  <div className="mt-3 grid gap-3 md:grid-cols-2">
+                    <textarea
+                      value={meal.notes || ''}
+                      onChange={(event) =>
+                        updateMealNotes(meal.id, event.target.value)
+                      }
+                      className="min-h-24 rounded-xl border border-slate-200 bg-white p-3"
+                      placeholder="Meal notes"
+                    />
+
+                    <textarea
+                      value={meal.ingredients || ''}
+                      onChange={(event) =>
+                        updateMealIngredients(meal.id, event.target.value)
+                      }
+                      className="min-h-24 rounded-xl border border-slate-200 bg-white p-3"
+                      placeholder="Ingredients, one per line"
+                    />
+                  </div>
                 </div>
               ))}
             </div>
