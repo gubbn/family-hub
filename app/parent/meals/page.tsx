@@ -103,6 +103,10 @@ export default function ParentMealsPage() {
     setMealPlan((planData as MealPlan[]) || [])
   }
 
+  useEffect(() => {
+    loadData()
+  }, [])
+
   function getPlanForDay(day: number) {
     return mealPlan.find((plan) => plan.day_of_week === day)
   }
@@ -135,7 +139,7 @@ export default function ParentMealsPage() {
     await loadData()
   }
 
-  async function updateMeal(mealId: string, title: string) {
+  async function updateMealTitle(mealId: string, title: string) {
     const trimmedTitle = title.trim()
 
     if (!trimmedTitle) {
@@ -149,19 +153,19 @@ export default function ParentMealsPage() {
       .eq('id', mealId)
 
     if (error) {
-      console.error('Update meal error:', error)
-      setStatus('Could not update meal')
+      console.error('Update meal title error:', error)
+      setStatus('Could not update meal title')
       return
     }
 
-    setStatus('Meal updated')
+    setStatus('Meal title saved')
     await loadData()
   }
 
   async function updateMealNotes(mealId: string, notes: string) {
     const { error } = await supabase
       .from('meals')
-      .update({ notes: notes || null })
+      .update({ notes: notes.trim() || null })
       .eq('id', mealId)
 
     if (error) {
@@ -170,7 +174,7 @@ export default function ParentMealsPage() {
       return
     }
 
-    setStatus('Meal notes updated')
+    setStatus('Meal notes saved')
     await loadData()
   }
 
@@ -186,14 +190,14 @@ export default function ParentMealsPage() {
       return
     }
 
-    setStatus('Meal staple updated')
+    setStatus('Meal staple saved')
     await loadData()
   }
 
   async function updateMealIngredients(mealId: string, ingredients: string) {
     const { error } = await supabase
       .from('meals')
-      .update({ ingredients: ingredients || null })
+      .update({ ingredients: ingredients.trim() || null })
       .eq('id', mealId)
 
     if (error) {
@@ -202,7 +206,7 @@ export default function ParentMealsPage() {
       return
     }
 
-    setStatus('Meal ingredients updated')
+    setStatus('Meal ingredients saved')
     await loadData()
   }
 
@@ -244,7 +248,7 @@ export default function ParentMealsPage() {
     await loadData()
   }
 
-  async function updateNotes(day: number, notes: string) {
+  async function updatePlanNotes(day: number, notes: string) {
     const existing = getPlanForDay(day)
 
     const { error } = await supabase.from('meal_plan').upsert(
@@ -252,7 +256,7 @@ export default function ParentMealsPage() {
         id: existing?.id,
         day_of_week: day,
         meal_id: existing?.meal_id || null,
-        notes,
+        notes: notes.trim() || null,
         active: true,
         week_start: getCurrentWeekStart(),
       },
@@ -260,12 +264,12 @@ export default function ParentMealsPage() {
     )
 
     if (error) {
-      console.error('Update notes error:', error)
-      setStatus('Could not update notes')
+      console.error('Update plan notes error:', error)
+      setStatus('Could not update meal plan notes')
       return
     }
 
-    setStatus('Notes saved')
+    setStatus('Meal plan notes saved')
     await loadData()
   }
 
@@ -439,10 +443,6 @@ export default function ParentMealsPage() {
     await loadData()
   }
 
-  useEffect(() => {
-    loadData()
-  }, [])
-
   return (
     <main className="min-h-screen bg-slate-100 p-6 text-slate-900">
       <div className="mx-auto max-w-5xl">
@@ -499,8 +499,14 @@ export default function ParentMealsPage() {
                 value={newMealIngredients}
                 onChange={(event) => setNewMealIngredients(event.target.value)}
                 className="min-h-28 rounded-2xl border border-slate-200 p-4 text-lg"
-                placeholder="Ingredients, one per line e.g. chicken breast, wraps, peppers"
+                placeholder="One per line e.g. Meat & Fish: chicken breast"
               />
+
+              <p className="text-sm text-slate-500">
+                Format ingredients like: <strong>Category: item</strong>.
+                Example: Meat & Fish: chicken breast, Fruit & Veg: peppers,
+                Cupboard: wraps.
+              </p>
             </div>
           </section>
 
@@ -603,9 +609,9 @@ export default function ParentMealsPage() {
                     </select>
 
                     <input
-                      value={plan?.notes || ''}
-                      onChange={(event) =>
-                        updateNotes(dayNumber, event.target.value)
+                      defaultValue={plan?.notes || ''}
+                      onBlur={(event) =>
+                        updatePlanNotes(dayNumber, event.target.value)
                       }
                       className="rounded-xl border border-slate-200 bg-white p-3"
                       placeholder="Daily meal notes"
@@ -627,9 +633,9 @@ export default function ParentMealsPage() {
                 >
                   <div className="grid gap-3 md:grid-cols-[1fr_180px_auto]">
                     <input
-                      value={meal.title}
-                      onChange={(event) =>
-                        updateMeal(meal.id, event.target.value)
+                      defaultValue={meal.title}
+                      onBlur={(event) =>
+                        updateMealTitle(meal.id, event.target.value)
                       }
                       className="rounded-xl border border-slate-200 bg-white p-3"
                     />
@@ -660,8 +666,8 @@ export default function ParentMealsPage() {
 
                   <div className="mt-3 grid gap-3 md:grid-cols-2">
                     <textarea
-                      value={meal.notes || ''}
-                      onChange={(event) =>
+                      defaultValue={meal.notes || ''}
+                      onBlur={(event) =>
                         updateMealNotes(meal.id, event.target.value)
                       }
                       className="min-h-24 rounded-xl border border-slate-200 bg-white p-3"
@@ -669,12 +675,12 @@ export default function ParentMealsPage() {
                     />
 
                     <textarea
-                      value={meal.ingredients || ''}
-                      onChange={(event) =>
+                      defaultValue={meal.ingredients || ''}
+                      onBlur={(event) =>
                         updateMealIngredients(meal.id, event.target.value)
                       }
                       className="min-h-24 rounded-xl border border-slate-200 bg-white p-3"
-                      placeholder="Ingredients, one per line"
+                      placeholder="Meat & Fish: chicken breast"
                     />
                   </div>
                 </div>

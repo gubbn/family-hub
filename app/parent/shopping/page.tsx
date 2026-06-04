@@ -24,6 +24,21 @@ type MealPlanItem = {
     | null
 }
 
+type ShoppingItem = {
+  id: string
+  category: string
+  item: string
+  completed: boolean
+}
+
+type ParsedIngredient = {
+  category: string
+  item: string
+  source: 'meal' | 'manual'
+  id?: string
+  completed?: boolean
+}
+
 const days: Record<number, string> = {
   1: 'Monday',
   2: 'Tuesday',
@@ -34,14 +49,32 @@ const days: Record<number, string> = {
   7: 'Sunday',
 }
 
+const categoryOrder = [
+  'Meat & Fish',
+  'Fruit & Veg',
+  'Fridge',
+  'Freezer',
+  'Cupboard',
+  'Bakery',
+  'Drinks',
+  'Snacks',
+  'Household',
+  'Dog',
+  'Other',
+]
+
 export default function ParentShoppingPage() {
   const [mealPlan, setMealPlan] = useState<MealPlanItem[]>([])
+  const [manualItems, setManualItems] = useState<ShoppingItem[]>([])
+  const [newItem, setNewItem] = useState('')
+  const [newCategory, setNewCategory] = useState('Other')
   const [loading, setLoading] = useState(true)
+  const [status, setStatus] = useState('')
 
   async function loadShoppingList() {
     setLoading(true)
 
-    const { data, error } = await supabase
+    const { data: planData, error: planError } = await supabase
       .from('meal_plan')
       .select(`
         id,
@@ -56,11 +89,23 @@ export default function ParentShoppingPage() {
       .eq('active', true)
       .order('day_of_week', { ascending: true })
 
-    if (error) {
-      console.error('Load shopping list error:', error)
+    const { data: itemsData, error: itemsError } = await supabase
+      .from('shopping_items')
+      .select('id, category, item, completed')
+      .order('created_at', { ascending: true })
+
+    if (planError) {
+      console.error('Load shopping list error:', planError)
       setMealPlan([])
     } else {
-      setMealPlan((data as MealPlanItem[]) || [])
+      setMealPlan((planData as MealPlanItem[]) || [])
+    }
+
+    if (itemsError) {
+      console.error('Load manual shopping items error:', itemsError)
+      setManualItems([])
+    } else {
+      setManualItems((itemsData as ShoppingItem[]) || [])
     }
 
     setLoading(false)
@@ -72,30 +117,144 @@ export default function ParentShoppingPage() {
 
   function getMeal(item: MealPlanItem) {
     if (!item.meals) return null
-
-    return Array.isArray(item.meals)
-      ? item.meals[0]
-      : item.meals
+    return Array.isArray(item.meals) ? item.meals[0] : item.meals
   }
 
-  function getIngredients(ingredients: string | null) {
+  function parseIngredients(ingredients: string | null): ParsedIngredient[] {
     if (!ingredients) return []
 
     return ingredients
       .split('\n')
-      .map((item) => item.trim())
+      .map((line) => line.trim())
       .filter(Boolean)
+      .map((line) => {
+        const [possibleCategory, ...rest] = line.split(':')
+
+        if (rest.length === 0) {
+          return {
+            category: 'Other',
+            item: line,
+            source: 'meal' as const,
+          }
+        }
+
+        return {
+          category: possibleCategory.trim() || 'Other',
+          item: rest.join(':').trim(),
+          source: 'meal' as const,
+        }
+      })
+      .filter((ingredient) => ingredient.item.length > 0)
   }
 
-  const allIngredients = mealPlan.flatMap((item) => {
+  const mealIngredients = mealPlan.flatMap((item) => {
     const meal = getMeal(item)
-
-    if (!meal?.ingredients) return []
-
-    return getIngredients(meal.ingredients)
+    return parseIngredients(meal?.ingredients || null)
   })
 
-  const uniqueIngredients = [...new Set(allIngredients)].sort()
+  const manualIngredients: ParsedIngredient[] = manualItems.map((item) => ({
+    category: item.category || 'Other',
+    item: item.item,
+    source: 'manual',
+    id: item.id,
+    completed: item.completed,
+  }))
+
+  const allShoppingItems = [...mealIngredients, ...manualIngredients]
+
+  const uniqueShoppingItems = allShoppingItems.filter(
+    (ingredient, index, array) =>
+      array.findIndex(
+        (item) =>
+          item.category.toLowerCase() === ingredient.category.toLowerCase() &&
+          item.item.toLowerCase() === ingredient.item.toLowerCase()
+      ) === index
+  )
+
+  const groupedIngredients = categoryOrder
+    .map((category) => ({
+      category,
+      items: uniqueShoppingItems
+        .filter(
+          (ingredient) =>
+            ingredient.category.toLowerCase() === category.toLowerCase()
+        )
+        .sort((a, b) => a.item.localeCompare(b.item)),
+    }))
+    .filter((group) => group.items.length > 0)
+
+  async function addManualItem() {
+    const cleanItem = newItem.trim()
+
+    if (!cleanItem) {
+      setStatus('Enter an item first')
+      return
+    }
+
+    const { error } = await supabase.from('shopping_items').insert({
+      category: newCategory || 'Other',
+      item: cleanItem,
+      completed: false,
+    })
+
+    if (error) {
+      console.error('Add shopping item error:', error)
+      setStatus('Could not add item')
+      return
+    }
+
+    setNewItem('')
+    setNewCategory('Other')
+    setStatus('Item added')
+    await loadShoppingList()
+  }
+
+  async function toggleManualItem(itemId: string, completed: boolean) {
+    const { error } = await supabase
+      .from('shopping_items')
+      .update({ completed: !completed })
+      .eq('id', itemId)
+
+    if (error) {
+      console.error('Toggle shopping item error:', error)
+      setStatus('Could not update item')
+      return
+    }
+
+    await loadShoppingList()
+  }
+
+  async function deleteManualItem(itemId: string) {
+    const { error } = await supabase
+      .from('shopping_items')
+      .delete()
+      .eq('id', itemId)
+
+    if (error) {
+      console.error('Delete shopping item error:', error)
+      setStatus('Could not delete item')
+      return
+    }
+
+    setStatus('Item removed')
+    await loadShoppingList()
+  }
+
+  async function clearCompletedManualItems() {
+    const { error } = await supabase
+      .from('shopping_items')
+      .delete()
+      .eq('completed', true)
+
+    if (error) {
+      console.error('Clear completed shopping items error:', error)
+      setStatus('Could not clear completed items')
+      return
+    }
+
+    setStatus('Completed items cleared')
+    await loadShoppingList()
+  }
 
   return (
     <main className="min-h-screen bg-slate-100 p-6 text-slate-900">
@@ -109,60 +268,155 @@ export default function ParentShoppingPage() {
         </h1>
 
         <ParentGate>
+          {status && (
+            <section className="mb-6 rounded-2xl bg-white p-4 text-sm text-slate-500 shadow-sm">
+              {status}
+            </section>
+          )}
+
           <section className="mb-6 rounded-3xl bg-white p-6 shadow-sm">
             <h2 className="mb-2 text-2xl font-semibold">
-              Consolidated Shopping List
+              Add Shopping Item
             </h2>
 
-            <p className="mb-6 text-sm text-slate-500">
-              Ingredients combined from all meals currently on this week's menu.
+            <p className="mb-5 text-sm text-slate-500">
+              Add extras that are not linked to meals, like toilet roll, dog
+              treats, snacks or milk.
             </p>
 
+            <div className="grid gap-3 md:grid-cols-[220px_1fr_auto]">
+              <select
+                value={newCategory}
+                onChange={(event) => setNewCategory(event.target.value)}
+                className="rounded-xl border border-slate-200 bg-white p-3"
+              >
+                {categoryOrder.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
+              </select>
+
+              <input
+                value={newItem}
+                onChange={(event) => setNewItem(event.target.value)}
+                className="rounded-xl border border-slate-200 bg-white p-3"
+                placeholder="e.g. toilet roll"
+              />
+
+              <button
+                onClick={addManualItem}
+                className="rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700"
+              >
+                Add item
+              </button>
+            </div>
+          </section>
+
+          <section className="mb-6 rounded-3xl bg-white p-6 shadow-sm">
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-2xl font-semibold">
+                  Consolidated Shopping List
+                </h2>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  Meal ingredients and manual items grouped by category.
+                </p>
+              </div>
+
+              <button
+                onClick={clearCompletedManualItems}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50"
+              >
+                Clear completed manual items
+              </button>
+            </div>
+
             {loading && (
-              <p className="text-slate-500">
-                Loading shopping list...
-              </p>
+              <p className="text-slate-500">Loading shopping list...</p>
             )}
 
-            {!loading && uniqueIngredients.length === 0 && (
-              <p className="text-slate-500">
-                No ingredients found.
-              </p>
+            {!loading && groupedIngredients.length === 0 && (
+              <p className="text-slate-500">No ingredients found.</p>
             )}
 
-            {!loading && uniqueIngredients.length > 0 && (
-              <div className="grid gap-2 md:grid-cols-2">
-                {uniqueIngredients.map((ingredient) => (
-                  <label
-                    key={ingredient}
-                    className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3"
+            {!loading && groupedIngredients.length > 0 && (
+              <div className="grid gap-4 md:grid-cols-2">
+                {groupedIngredients.map((group) => (
+                  <div
+                    key={group.category}
+                    className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
                   >
-                    <input
-                      type="checkbox"
-                      className="h-5 w-5"
-                    />
+                    <h3 className="mb-3 text-lg font-semibold">
+                      {group.category}
+                    </h3>
 
-                    <span>{ingredient}</span>
-                  </label>
+                    <div className="space-y-2">
+                      {group.items.map((ingredient) => {
+                        const isManual = ingredient.source === 'manual'
+
+                        return (
+                          <div
+                            key={`${group.category}-${ingredient.item}`}
+                            className="flex items-center justify-between gap-3 rounded-xl bg-white p-3"
+                          >
+                            <label className="flex flex-1 items-center gap-3">
+                              <input
+                                type="checkbox"
+                                className="h-5 w-5"
+                                checked={ingredient.completed || false}
+                                onChange={() => {
+                                  if (isManual && ingredient.id) {
+                                    toggleManualItem(
+                                      ingredient.id,
+                                      ingredient.completed || false
+                                    )
+                                  }
+                                }}
+                                disabled={!isManual}
+                              />
+
+                              <span
+                                className={
+                                  ingredient.completed
+                                    ? 'text-slate-400 line-through'
+                                    : ''
+                                }
+                              >
+                                {ingredient.item}
+                              </span>
+                            </label>
+
+                            {isManual && ingredient.id && (
+                              <button
+                                onClick={() =>
+                                  deleteManualItem(ingredient.id as string)
+                                }
+                                className="text-sm text-red-500 hover:text-red-700"
+                              >
+                                Remove
+                              </button>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
                 ))}
               </div>
             )}
           </section>
 
           <section className="rounded-3xl bg-white p-6 shadow-sm">
-            <h2 className="mb-5 text-2xl font-semibold">
-              Meals This Week
-            </h2>
+            <h2 className="mb-5 text-2xl font-semibold">Meals This Week</h2>
 
             <div className="space-y-4">
               {mealPlan.map((item) => {
                 const meal = getMeal(item)
-
                 if (!meal) return null
 
-                const ingredients = getIngredients(
-                  meal.ingredients
-                )
+                const ingredients = parseIngredients(meal.ingredients)
 
                 return (
                   <div
@@ -180,8 +434,11 @@ export default function ParentShoppingPage() {
                     ) : (
                       <ul className="mt-3 list-disc space-y-1 pl-6 text-slate-700">
                         {ingredients.map((ingredient, index) => (
-                          <li key={`${ingredient}-${index}`}>
-                            {ingredient}
+                          <li key={`${ingredient.item}-${index}`}>
+                            <span className="font-medium">
+                              {ingredient.category}:
+                            </span>{' '}
+                            {ingredient.item}
                           </li>
                         ))}
                       </ul>
