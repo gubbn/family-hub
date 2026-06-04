@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react'
 import NavBar from '../../../components/NavBar'
-import ParentGate from '../../../components/ParentGate'
 import ParentBackButton from '../../../components/ParentBackButton'
 import { supabase } from '../../../lib/supabaseClient'
 
@@ -267,12 +266,6 @@ export default function ParentShoppingPage() {
           Shopping List
         </h1>
 
-        <ParentGate>
-          {status && (
-            <section className="mb-6 rounded-2xl bg-white p-4 text-sm text-slate-500 shadow-sm">
-              {status}
-            </section>
-          )}
 
           <section className="mb-6 rounded-3xl bg-white p-6 shadow-sm">
             <h2 className="mb-2 text-2xl font-semibold">
@@ -363,19 +356,18 @@ export default function ParentShoppingPage() {
                           >
                             <label className="flex flex-1 items-center gap-3">
                               <input
-                                type="checkbox"
-                                className="h-5 w-5"
-                                checked={ingredient.completed || false}
-                                onChange={() => {
-                                  if (isManual && ingredient.id) {
-                                    toggleManualItem(
-                                      ingredient.id,
-                                      ingredient.completed || false
-                                    )
-                                  }
-                                }}
-                                disabled={!isManual}
-                              />
+  type="checkbox"
+  className="h-5 w-5"
+  defaultChecked={ingredient.completed || false}
+  onChange={() => {
+    if (isManual && ingredient.id) {
+      toggleManualItem(
+        ingredient.id,
+        ingredient.completed || false
+      )
+    }
+  }}
+/>
 
                               <span
                                 className={
@@ -448,7 +440,6 @@ export default function ParentShoppingPage() {
               })}
             </div>
           </section>
-        </ParentGate>
       </div>
     </main>
   )

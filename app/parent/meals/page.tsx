@@ -455,6 +455,8 @@ export default function ParentMealsPage() {
         </h1>
 
         <ParentGate>
+          <div className="grid gap-6 lg:grid-cols-[1fr_260px]">
+            <div>
           {status && (
             <section className="mb-6 rounded-2xl bg-white p-4 text-sm text-slate-500 shadow-sm">
               {status}
@@ -687,6 +689,41 @@ export default function ParentMealsPage() {
               ))}
             </div>
           </section>
+            </div>
+
+  <aside className="h-fit rounded-3xl bg-white p-5 shadow-sm lg:sticky lg:top-6">
+    <h2 className="mb-3 text-xl font-semibold">
+      Category Guide
+    </h2>
+
+    <p className="mb-4 text-sm text-slate-500">
+      Use these when entering ingredients.
+    </p>
+
+    <div className="space-y-2 text-sm">
+      {[
+        'Meat & Fish',
+        'Fruit & Veg',
+        'Fridge',
+        'Freezer',
+        'Cupboard',
+        'Bakery',
+        'Drinks',
+        'Snacks',
+        'Household',
+        'Dog',
+        'Other',
+      ].map((category) => (
+        <div
+          key={category}
+          className="rounded-xl bg-slate-50 px-3 py-2 font-medium"
+        >
+          {category}
+        </div>
+      ))}
+    </div>
+  </aside>
+</div>
         </ParentGate>
       </div>
     </main>
