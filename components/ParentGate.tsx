@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { getSetting } from '../lib/settings'
+import { isParentUnlocked, unlockParent } from '@/lib/parentSession'
 
 type Props = {
   children: React.ReactNode
@@ -15,22 +16,39 @@ export default function ParentGate({ children }: Props) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    async function loadPin() {
+    async function initialiseGate() {
+      if (isParentUnlocked()) {
+        setUnlocked(true)
+        setLoading(false)
+        return
+      }
+
       const savedPin = await getSetting('parent_pin')
       setParentPin(savedPin || '1234')
       setLoading(false)
     }
 
-    loadPin()
+    initialiseGate()
   }, [])
 
-  function unlock() {
-    if (pin === parentPin) {
+  function handleUnlock() {
+    if (pin.trim() === parentPin) {
+      unlockParent()
       setUnlocked(true)
       setError('')
-    } else {
-      setError('Incorrect PIN')
+      setPin('')
+      return
     }
+
+    setError('Incorrect PIN')
+  }
+
+  if (loading) {
+    return (
+      <section className="rounded-3xl bg-white p-6 shadow-sm">
+        <p className="text-sm text-slate-500">Checking Parent Zone access...</p>
+      </section>
+    )
   }
 
   if (unlocked) {
@@ -48,22 +66,25 @@ export default function ParentGate({ children }: Props) {
       <div className="flex gap-3">
         <input
           type="password"
+          inputMode="numeric"
           value={pin}
-          onChange={(event) => setPin(event.target.value)}
+          onChange={(event) => {
+            setPin(event.target.value)
+            setError('')
+          }}
           onKeyDown={(event) => {
             if (event.key === 'Enter') {
-              unlock()
+              handleUnlock()
             }
           }}
-          disabled={loading}
           className="rounded-2xl border border-slate-200 p-4 text-xl"
-          placeholder={loading ? 'Loading...' : 'PIN'}
+          placeholder="PIN"
         />
 
         <button
-          onClick={unlock}
-          disabled={loading}
-          className="rounded-2xl bg-blue-600 px-6 py-4 text-xl font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-400"
+          type="button"
+          onClick={handleUnlock}
+          className="rounded-2xl bg-blue-600 px-6 py-4 text-xl font-semibold text-white hover:bg-blue-700"
         >
           Unlock
         </button>
