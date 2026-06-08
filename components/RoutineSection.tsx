@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
+import { updateCompletionStreak } from '@/lib/streaks'
 
 type Props = {
   selectedMember: string
+  resetKey?: number
 }
 
 type RoutineInfo = {
@@ -25,9 +27,16 @@ type Completion = {
   family_member_id: string
 }
 
-export default function RoutineSection({ selectedMember }: Props) {
+type Streak = {
+  item_id: string
+  streak_count: number
+  best_streak: number
+}
+
+export default function RoutineSection({ selectedMember, resetKey = 0 }: Props) {
   const [steps, setSteps] = useState<RoutineStep[]>([])
   const [completed, setCompleted] = useState<string[]>([])
+  const [streaks, setStreaks] = useState<Record<string, Streak>>({})
   const [loading, setLoading] = useState(false)
 
   async function loadRoutineData() {
@@ -58,8 +67,15 @@ export default function RoutineSection({ selectedMember }: Props) {
         .eq('family_member_id', selectedMember)
         .gte('completed_at', today)
 
+      const { data: streakData, error: streakError } = await supabase
+        .from('completion_streaks')
+        .select('item_id, streak_count, best_streak')
+        .eq('member_id', selectedMember)
+        .eq('item_type', 'routine_step')
+
       if (stepError) console.error('Routine steps error:', stepError)
       if (completionError) console.error('Routine completions error:', completionError)
+      if (streakError) console.error('Routine streaks error:', streakError)
 
       const safeSteps: RoutineStep[] =
         stepData?.map((step) => ({
@@ -70,14 +86,21 @@ export default function RoutineSection({ selectedMember }: Props) {
           routines: step.routines,
         })) || []
 
-      setSteps(safeSteps)
-
-      setCompleted(
+      const safeCompleted =
         completionData?.map(
           (completion: Completion) =>
             `${completion.routine_step_id}:${completion.family_member_id}`
         ) || []
-      )
+
+      const safeStreaks =
+        streakData?.reduce((acc, streak) => {
+          acc[streak.item_id] = streak
+          return acc
+        }, {} as Record<string, Streak>) || {}
+
+      setSteps(safeSteps)
+      setCompleted(safeCompleted)
+      setStreaks(safeStreaks)
     } catch (error) {
       console.error('Load routine data failed:', error)
     } finally {
@@ -116,6 +139,12 @@ export default function RoutineSection({ selectedMember }: Props) {
         console.error('Insert routine completion error:', error)
         return
       }
+
+      await updateCompletionStreak({
+        memberId: selectedMember,
+        itemType: 'routine_step',
+        itemId: stepId,
+      })
     }
 
     await loadRoutineData()
@@ -123,7 +152,7 @@ export default function RoutineSection({ selectedMember }: Props) {
 
   useEffect(() => {
     loadRoutineData()
-  }, [selectedMember])
+  }, [selectedMember, resetKey])
 
   const visibleSteps = steps.filter((step) => {
     const key = `${step.id}:${selectedMember}`
@@ -186,15 +215,26 @@ export default function RoutineSection({ selectedMember }: Props) {
             </h3>
 
             <div className="space-y-2">
-              {routineData.steps.map((step) => (
-                <button
-                  key={step.id}
-                  onClick={() => toggleRoutineStep(step.id)}
-                  className="w-full rounded-2xl border border-slate-200 bg-white p-4 text-left text-lg transition hover:bg-slate-50"
-                >
-                  ⬜ {step.title}
-                </button>
-              ))}
+              {routineData.steps.map((step) => {
+                const streak = streaks[step.id]
+
+                return (
+                  <button
+                    key={step.id}
+                    type="button"
+                    onClick={() => toggleRoutineStep(step.id)}
+                    className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-white p-4 text-left text-lg transition hover:bg-slate-50"
+                  >
+                    <span>⬜ {step.title}</span>
+
+                    {streak?.streak_count > 0 && (
+                      <span className="rounded-full bg-orange-100 px-3 py-1 text-sm font-semibold text-orange-700">
+                        🔥 {streak.streak_count}
+                      </span>
+                    )}
+                  </button>
+                )
+              })}
             </div>
           </div>
         ))}

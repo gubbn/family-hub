@@ -14,29 +14,23 @@ type FamilyMember = {
 export default function RoutinesPage() {
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([])
   const [selectedMember, setSelectedMember] = useState('')
+  const [resetKey, setResetKey] = useState(0)
 
   async function loadMembers() {
-    try {
-      const { data, error } = await supabase
-        .from('family_members')
-        .select('id, name, avatar_emoji')
-        .order('display_order')
+    const { data, error } = await supabase
+      .from('family_members')
+      .select('id, name, avatar_emoji')
+      .order('display_order')
 
-      if (error) {
-        console.error('Load members error:', error)
-        return
-      }
-
-      const safeMembers = data || []
-
-      setFamilyMembers(safeMembers)
-
-      setSelectedMember((current) => {
-        return current || safeMembers[0]?.id || ''
-      })
-    } catch (error) {
-      console.error('Load members failed:', error)
+    if (error) {
+      console.error('Load members error:', error)
+      return
     }
+
+    const safeMembers = data || []
+    setFamilyMembers(safeMembers)
+
+    setSelectedMember((current) => current || safeMembers[0]?.id || '')
   }
 
   async function resetTodayRoutines() {
@@ -55,7 +49,7 @@ export default function RoutinesPage() {
       return
     }
 
-    window.location.reload()
+    setResetKey((current) => current + 1)
   }
 
   useEffect(() => {
@@ -80,6 +74,7 @@ export default function RoutinesPage() {
             {familyMembers.map((member) => (
               <button
                 key={member.id}
+                type="button"
                 onClick={() => setSelectedMember(member.id)}
                 className={`rounded-2xl border p-5 text-center transition-all ${
                   selectedMember === member.id
@@ -106,6 +101,7 @@ export default function RoutinesPage() {
             </p>
 
             <button
+              type="button"
               onClick={resetTodayRoutines}
               className="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50"
             >
@@ -115,7 +111,10 @@ export default function RoutinesPage() {
         </section>
 
         <section className="rounded-3xl bg-white p-6 shadow-sm">
-          <RoutineSection selectedMember={selectedMember} />
+          <RoutineSection
+            selectedMember={selectedMember}
+            resetKey={resetKey}
+          />
         </section>
       </div>
     </main>
