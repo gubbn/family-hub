@@ -1,11 +1,10 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import Link from 'next/link'
 import NavBar from '../components/NavBar'
 import WeatherCard from '../components/WeatherCard'
-import { supabase } from '../lib/supabaseClient'
 import DogWalkSuggestion from '../components/DogWalkSuggestion'
+import { supabase } from '../lib/supabaseClient'
 
 type MealPlanItem = {
   day_of_week: number
@@ -50,14 +49,10 @@ type ChoreAssignment = {
   chores: DashboardChore | DashboardChore[] | null
 }
 
-const dashboardCards = [
-  { title: 'Chores', href: '/chores', emoji: '🧹' },
-  { title: 'Routines', href: '/routines', emoji: '🌅' },
-  { title: 'Schedule', href: '/schedule', emoji: '📅' },
-  { title: 'Meals', href: '/meals', emoji: '🍽️' },
-  { title: 'I’m Bored', href: '/bored', emoji: '🎲' },
-  { title: 'Parent Zone', href: '/parent', emoji: '🔐' },
-]
+type RoutineStreakLeader = {
+  name: string
+  streakTotal: number
+}
 
 function getTodayDate() {
   return new Date().toISOString().split('T')[0]
@@ -69,7 +64,15 @@ function getWeekStartDate() {
   const diff = day === 0 ? -6 : 1 - day
   const monday = new Date(now)
   monday.setDate(now.getDate() + diff)
+
   return monday.toISOString().split('T')[0]
+}
+
+function formatNames(names: string[]) {
+  if (names.length === 1) return names[0]
+  if (names.length === 2) return `${names[0]} and ${names[1]}`
+
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
 }
 
 export default function Home() {
@@ -79,12 +82,59 @@ export default function Home() {
   const [events, setEvents] = useState<WeeklyEvent[]>([])
   const [choreAssignments, setChoreAssignments] = useState<ChoreAssignment[]>([])
   const [choreCompletions, setChoreCompletions] = useState<Completion[]>([])
+  const [routineStreakLeaders, setRoutineStreakLeaders] = useState<RoutineStreakLeader[]>([])
   const [loading, setLoading] = useState(true)
 
-  const todayNumber = (() => {
+  const todayNumber = useMemo(() => {
     const jsDay = new Date().getDay()
     return jsDay === 0 ? 7 : jsDay
-  })()
+  }, [])
+
+  async function loadRoutineStreakLeaders() {
+    const { data, error } = await supabase
+      .from('completion_streaks')
+      .select(`
+        member_id,
+        streak_count,
+        family_members (
+          name
+        )
+      `)
+      .eq('item_type', 'routine_step')
+      .gt('streak_count', 0)
+
+    if (error) {
+      console.error('Load routine streak leaders error:', error)
+      return []
+    }
+
+    const totals = new Map<string, RoutineStreakLeader>()
+
+    data?.forEach((row) => {
+      const memberName = Array.isArray(row.family_members)
+        ? row.family_members[0]?.name
+        : row.family_members?.name
+
+      if (!memberName) return
+
+      const current = totals.get(row.member_id)
+
+      totals.set(row.member_id, {
+        name: memberName,
+        streakTotal: (current?.streakTotal || 0) + 1,
+      })
+    })
+
+    const sorted = Array.from(totals.values()).sort(
+      (a, b) => b.streakTotal - a.streakTotal
+    )
+
+    if (sorted.length === 0) return []
+
+    const highest = sorted[0].streakTotal
+
+    return sorted.filter((person) => person.streakTotal === highest)
+  }
 
   async function loadDashboardData() {
     setLoading(true)
@@ -138,11 +188,14 @@ export default function Home() {
       .order('day_of_week')
       .order('start_time')
 
-    setMealPlan(mealData || [])
-    setFamilyMembers(membersData || [])
-    setEvents(eventsData || [])
-    setChoreAssignments((assignmentData as ChoreAssignment[]) || [])
+    const leaders = await loadRoutineStreakLeaders()
+
+    setMealPlan((mealData as MealPlanItem[]) || [])
+    setFamilyMembers((membersData as FamilyMember[]) || [])
     setChoreCompletions((completedData as Completion[]) || [])
+    setChoreAssignments((assignmentData as ChoreAssignment[]) || [])
+    setEvents((eventsData as WeeklyEvent[]) || [])
+    setRoutineStreakLeaders(leaders)
 
     const totals: Record<string, number> = {}
 
@@ -171,13 +224,13 @@ export default function Home() {
     return mealPlan.find((item) => item.day_of_week === todayNumber)
   }, [mealPlan, todayNumber])
 
-  const mealTitle = (() => {
+  const mealTitle = useMemo(() => {
     if (!todaysMeal?.meals) return null
 
     return Array.isArray(todaysMeal.meals)
       ? todaysMeal.meals[0]?.title
       : todaysMeal.meals.title
-  })()
+  }, [todaysMeal])
 
   const currentDate = new Date().toLocaleDateString('en-GB', {
     weekday: 'long',
@@ -188,10 +241,10 @@ export default function Home() {
   const upcomingEvent = useMemo(() => {
     const now = new Date()
 
-    const currentTime =
-      now.getHours().toString().padStart(2, '0') +
-      ':' +
-      now.getMinutes().toString().padStart(2, '0')
+    const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now
+      .getMinutes()
+      .toString()
+      .padStart(2, '0')}`
 
     const todaysEvents = events.filter(
       (event) =>
@@ -203,17 +256,18 @@ export default function Home() {
     return todaysEvents[0] || null
   }, [events, todayNumber])
 
-  const leaderboard = familyMembers
-    .map((member) => ({
-      ...member,
-      total: points[member.id] || 0,
-    }))
-    .sort((a, b) => b.total - a.total)
+  const leaderboard = useMemo(() => {
+    return familyMembers
+      .map((member) => ({
+        ...member,
+        total: points[member.id] || 0,
+      }))
+      .sort((a, b) => b.total - a.total)
+  }, [familyMembers, points])
 
   const choreSummary = useMemo(() => {
     const today = getTodayDate()
     const weekStart = getWeekStartDate()
-
     const uniqueChores = new Map<string, DashboardChore>()
 
     choreAssignments.forEach((assignment) => {
@@ -245,10 +299,9 @@ export default function Home() {
     const dueToday = chores.filter((chore) => {
       const frequency = chore.frequency || 'daily'
 
-      const relevantCompletions = choreCompletions.filter((completion) => {
-        if (completion.chore_id !== chore.id) return false
-        return true
-      })
+      const relevantCompletions = choreCompletions.filter(
+        (completion) => completion.chore_id === chore.id
+      )
 
       if (frequency === 'daily') {
         return !relevantCompletions.some(
@@ -275,6 +328,18 @@ export default function Home() {
       pointsToday,
     }
   }, [choreAssignments, choreCompletions])
+
+  const routineStreakText = useMemo(() => {
+    if (routineStreakLeaders.length === 0) {
+      return 'No routine streaks yet'
+    }
+
+    const names = formatNames(routineStreakLeaders.map((person) => person.name))
+    const streakTotal = routineStreakLeaders[0].streakTotal
+    const verb = routineStreakLeaders.length === 1 ? 'has' : 'have'
+
+    return `${names} ${verb} ${streakTotal} routine streaks`
+  }, [routineStreakLeaders])
 
   return (
     <main className="min-h-screen bg-slate-100 p-4 text-slate-900">
@@ -318,7 +383,9 @@ export default function Home() {
 
                 {!loading && mealTitle && (
                   <>
-                    <div className="mt-1 text-2xl font-bold">{mealTitle}</div>
+                    <div className="mt-1 text-2xl font-bold">
+                      {mealTitle}
+                    </div>
 
                     {todaysMeal?.notes && (
                       <div className="mt-2 text-sm text-slate-600">
@@ -348,8 +415,7 @@ export default function Home() {
 
                     <div className="mt-1 text-sm text-slate-600">
                       {upcomingEvent.start_time}
-                      {upcomingEvent.end_time &&
-                        ` - ${upcomingEvent.end_time}`}
+                      {upcomingEvent.end_time && ` - ${upcomingEvent.end_time}`}
                     </div>
 
                     {upcomingEvent.location && (
@@ -387,7 +453,9 @@ export default function Home() {
                       {member.avatar_emoji || '🙂'}
                     </div>
 
-                    <div className="font-medium">{member.name}</div>
+                    <div className="font-medium">
+                      {member.name}
+                    </div>
                   </div>
 
                   <div className="text-lg font-bold text-blue-600">
@@ -400,39 +468,52 @@ export default function Home() {
         </section>
 
         <section className="mb-4 rounded-2xl bg-white p-5 shadow-sm">
-  <h2 className="mb-4 text-xl font-semibold">🎉 Family Wins</h2>
+          <h2 className="mb-4 text-xl font-semibold">🎉 Family Wins</h2>
 
-  <div className="grid gap-3 md:grid-cols-2">
-    <div className="rounded-xl bg-yellow-50 p-4">
-      <div className="text-sm font-medium text-yellow-700">
-        Current leader
-      </div>
-      <div className="mt-1 text-lg font-bold">
-        {leaderboard[0]
-          ? `${leaderboard[0].avatar_emoji || '🙂'} ${leaderboard[0].name} with ${leaderboard[0].total} points`
-          : 'No points yet'}
-      </div>
-    </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="rounded-xl bg-yellow-50 p-4">
+              <div className="text-sm font-medium text-yellow-700">
+                Current leader
+              </div>
 
-    <div className="rounded-xl bg-green-50 p-4">
-      <div className="text-sm font-medium text-green-700">
-        Chore progress
-      </div>
-      <div className="mt-1 text-lg font-bold">
-        {choreSummary.completedToday} completed today
-      </div>
-    </div>
+              <div className="mt-1 text-lg font-bold">
+                {leaderboard[0]
+                  ? `${leaderboard[0].avatar_emoji || '🙂'} ${leaderboard[0].name} with ${leaderboard[0].total} points`
+                  : 'No points yet'}
+              </div>
+            </div>
 
-    <div className="rounded-xl bg-blue-50 p-4">
-      <div className="text-sm font-medium text-blue-700">
-        Dog walk
-      </div>
-      <div className="mt-1 text-lg font-bold">
-        <DogWalkSuggestion />
-      </div>
-    </div>
-  </div>
-</section>
+            <div className="rounded-xl bg-orange-50 p-4">
+              <div className="text-sm font-medium text-orange-700">
+                Routine streaks
+              </div>
+
+              <div className="mt-1 text-lg font-bold">
+                🔥 {routineStreakText}
+              </div>
+            </div>
+
+            <div className="rounded-xl bg-green-50 p-4">
+              <div className="text-sm font-medium text-green-700">
+                Chore progress
+              </div>
+
+              <div className="mt-1 text-lg font-bold">
+                {choreSummary.completedToday} completed today
+              </div>
+            </div>
+
+            <div className="rounded-xl bg-blue-50 p-4">
+              <div className="text-sm font-medium text-blue-700">
+                Dog walk
+              </div>
+
+              <div className="mt-1 text-lg font-bold">
+                <DogWalkSuggestion />
+              </div>
+            </div>
+          </div>
+        </section>
 
         <section className="mb-4 grid gap-4 md:grid-cols-3">
           <div className="rounded-2xl bg-white p-5 shadow-sm">
@@ -465,8 +546,7 @@ export default function Home() {
             </div>
           </div>
         </section>
-
-  </div>
+      </div>
     </main>
   )
 }
