@@ -49,7 +49,14 @@ type ChoreAssignment = {
   chores: DashboardChore | DashboardChore[] | null
 }
 
+type RoutineStreak = {
+  member_id: string
+  item_id: string
+  streak_count: number
+}
+
 type RoutineStreakLeader = {
+  id: string
   name: string
   streakTotal: number
 }
@@ -63,12 +70,14 @@ function getWeekStartDate() {
   const day = now.getDay()
   const diff = day === 0 ? -6 : 1 - day
   const monday = new Date(now)
+
   monday.setDate(now.getDate() + diff)
 
   return monday.toISOString().split('T')[0]
 }
 
 function formatNames(names: string[]) {
+  if (names.length === 0) return ''
   if (names.length === 1) return names[0]
   if (names.length === 2) return `${names[0]} and ${names[1]}`
 
@@ -82,7 +91,7 @@ export default function Home() {
   const [events, setEvents] = useState<WeeklyEvent[]>([])
   const [choreAssignments, setChoreAssignments] = useState<ChoreAssignment[]>([])
   const [choreCompletions, setChoreCompletions] = useState<Completion[]>([])
-  const [routineStreakLeaders, setRoutineStreakLeaders] = useState<RoutineStreakLeader[]>([])
+  const [routineStreaks, setRoutineStreaks] = useState<RoutineStreak[]>([])
   const [loading, setLoading] = useState(true)
 
   const todayNumber = useMemo(() => {
@@ -90,58 +99,12 @@ export default function Home() {
     return jsDay === 0 ? 7 : jsDay
   }, [])
 
-  async function loadRoutineStreakLeaders() {
-    const { data, error } = await supabase
-      .from('completion_streaks')
-      .select(`
-        member_id,
-        streak_count,
-        family_members (
-          name
-        )
-      `)
-      .eq('item_type', 'routine_step')
-      .gt('streak_count', 0)
-
-    if (error) {
-      console.error('Load routine streak leaders error:', error)
-      return []
-    }
-
-    const totals = new Map<string, RoutineStreakLeader>()
-
-    data?.forEach((row) => {
-      const memberName = Array.isArray(row.family_members)
-        ? row.family_members[0]?.name
-        : row.family_members?.name
-
-      if (!memberName) return
-
-      const current = totals.get(row.member_id)
-
-      totals.set(row.member_id, {
-        name: memberName,
-        streakTotal: (current?.streakTotal || 0) + 1,
-      })
-    })
-
-    const sorted = Array.from(totals.values()).sort(
-      (a, b) => b.streakTotal - a.streakTotal
-    )
-
-    if (sorted.length === 0) return []
-
-    const highest = sorted[0].streakTotal
-
-    return sorted.filter((person) => person.streakTotal === highest)
-  }
-
   async function loadDashboardData() {
     setLoading(true)
 
     const today = getTodayDate()
 
-    const { data: mealData } = await supabase
+    const { data: mealData, error: mealError } = await supabase
       .from('meal_plan')
       .select(`
         day_of_week,
@@ -151,12 +114,12 @@ export default function Home() {
         )
       `)
 
-    const { data: membersData } = await supabase
+    const { data: membersData, error: membersError } = await supabase
       .from('family_members')
       .select('id, name, avatar_emoji')
       .order('display_order')
 
-    const { data: completedData } = await supabase
+    const { data: completedData, error: completedError } = await supabase
       .from('chore_completions')
       .select(`
         chore_id,
@@ -167,7 +130,7 @@ export default function Home() {
         )
       `)
 
-    const { data: assignmentData } = await supabase
+    const { data: assignmentData, error: assignmentError } = await supabase
       .from('chore_assignments')
       .select(`
         chore_id,
@@ -181,21 +144,32 @@ export default function Home() {
         )
       `)
 
-    const { data: eventsData } = await supabase
+    const { data: eventsData, error: eventsError } = await supabase
       .from('weekly_events')
       .select('*')
       .eq('active', true)
       .order('day_of_week')
       .order('start_time')
 
-    const leaders = await loadRoutineStreakLeaders()
+    const { data: streakData, error: streakError } = await supabase
+      .from('completion_streaks')
+      .select('member_id, item_id, streak_count')
+      .eq('item_type', 'routine_step')
+      .gt('streak_count', 0)
+
+    if (mealError) console.error('Meal plan error:', mealError)
+    if (membersError) console.error('Members error:', membersError)
+    if (completedError) console.error('Completed chores error:', completedError)
+    if (assignmentError) console.error('Chore assignments error:', assignmentError)
+    if (eventsError) console.error('Weekly events error:', eventsError)
+    if (streakError) console.error('Routine streaks error:', streakError)
 
     setMealPlan((mealData as MealPlanItem[]) || [])
     setFamilyMembers((membersData as FamilyMember[]) || [])
     setChoreCompletions((completedData as Completion[]) || [])
     setChoreAssignments((assignmentData as ChoreAssignment[]) || [])
     setEvents((eventsData as WeeklyEvent[]) || [])
-    setRoutineStreakLeaders(leaders)
+    setRoutineStreaks((streakData as RoutineStreak[]) || [])
 
     const totals: Record<string, number> = {}
 
@@ -246,14 +220,14 @@ export default function Home() {
       .toString()
       .padStart(2, '0')}`
 
-    const todaysEvents = events.filter(
-      (event) =>
-        event.day_of_week === todayNumber &&
-        event.start_time &&
-        event.start_time >= currentTime
+    return (
+      events.find(
+        (event) =>
+          event.day_of_week === todayNumber &&
+          event.start_time &&
+          event.start_time >= currentTime
+      ) || null
     )
-
-    return todaysEvents[0] || null
   }, [events, todayNumber])
 
   const leaderboard = useMemo(() => {
@@ -264,6 +238,41 @@ export default function Home() {
       }))
       .sort((a, b) => b.total - a.total)
   }, [familyMembers, points])
+
+  const routineStreakLeaders = useMemo(() => {
+    const totals = new Map<string, number>()
+
+    routineStreaks.forEach((streak) => {
+      totals.set(streak.member_id, (totals.get(streak.member_id) || 0) + 1)
+    })
+
+    const leaders: RoutineStreakLeader[] = familyMembers
+      .map((member) => ({
+        id: member.id,
+        name: member.name,
+        streakTotal: totals.get(member.id) || 0,
+      }))
+      .filter((member) => member.streakTotal > 0)
+      .sort((a, b) => b.streakTotal - a.streakTotal)
+
+    if (leaders.length === 0) return []
+
+    const highest = leaders[0].streakTotal
+
+    return leaders.filter((leader) => leader.streakTotal === highest)
+  }, [familyMembers, routineStreaks])
+
+  const routineStreakText = useMemo(() => {
+    if (routineStreakLeaders.length === 0) {
+      return 'No routine streaks yet'
+    }
+
+    const names = formatNames(routineStreakLeaders.map((person) => person.name))
+    const total = routineStreakLeaders[0].streakTotal
+    const verb = routineStreakLeaders.length === 1 ? 'has' : 'have'
+
+    return `${names} ${verb} ${total} routine streaks`
+  }, [routineStreakLeaders])
 
   const choreSummary = useMemo(() => {
     const today = getTodayDate()
@@ -328,18 +337,6 @@ export default function Home() {
       pointsToday,
     }
   }, [choreAssignments, choreCompletions])
-
-  const routineStreakText = useMemo(() => {
-    if (routineStreakLeaders.length === 0) {
-      return 'No routine streaks yet'
-    }
-
-    const names = formatNames(routineStreakLeaders.map((person) => person.name))
-    const streakTotal = routineStreakLeaders[0].streakTotal
-    const verb = routineStreakLeaders.length === 1 ? 'has' : 'have'
-
-    return `${names} ${verb} ${streakTotal} routine streaks`
-  }, [routineStreakLeaders])
 
   return (
     <main className="min-h-screen bg-slate-100 p-4 text-slate-900">
@@ -453,9 +450,7 @@ export default function Home() {
                       {member.avatar_emoji || '🙂'}
                     </div>
 
-                    <div className="font-medium">
-                      {member.name}
-                    </div>
+                    <div className="font-medium">{member.name}</div>
                   </div>
 
                   <div className="text-lg font-bold text-blue-600">
@@ -518,9 +513,11 @@ export default function Home() {
         <section className="mb-4 grid gap-4 md:grid-cols-3">
           <div className="rounded-2xl bg-white p-5 shadow-sm">
             <div className="text-3xl">🧹</div>
+
             <div className="mt-2 text-sm font-medium text-slate-500">
               Chores due
             </div>
+
             <div className="text-3xl font-bold text-slate-900">
               {choreSummary.dueToday}
             </div>
@@ -528,9 +525,11 @@ export default function Home() {
 
           <div className="rounded-2xl bg-white p-5 shadow-sm">
             <div className="text-3xl">✅</div>
+
             <div className="mt-2 text-sm font-medium text-slate-500">
               Completed today
             </div>
+
             <div className="text-3xl font-bold text-slate-900">
               {choreSummary.completedToday}
             </div>
@@ -538,9 +537,11 @@ export default function Home() {
 
           <div className="rounded-2xl bg-white p-5 shadow-sm">
             <div className="text-3xl">⭐</div>
+
             <div className="mt-2 text-sm font-medium text-slate-500">
               Points earned today
             </div>
+
             <div className="text-3xl font-bold text-slate-900">
               {choreSummary.pointsToday}
             </div>
