@@ -10,11 +10,13 @@ import {
   useState,
 } from 'react'
 import { supabase } from '../lib/supabaseClient'
+import OnboardingWizard from './OnboardingWizard'
 
 type HouseholdMembership = {
   household_id: string
   role: 'owner' | 'parent'
   householdName: string
+  onboardingComplete: boolean
 }
 
 type AuthContextValue = {
@@ -69,10 +71,28 @@ export default function AuthProvider({
       ? data.households[0]
       : data.households
 
+    let onboardingComplete = data.role !== 'owner'
+
+    if (data.role === 'owner') {
+      const { data: onboardingSetting, error: onboardingError } = await supabase
+        .from('app_settings')
+        .select('value')
+        .eq('household_id', data.household_id)
+        .eq('key', 'onboarding_completed')
+        .maybeSingle()
+
+      if (onboardingError) {
+        console.error('Load onboarding status error:', onboardingError)
+      }
+
+      onboardingComplete = onboardingSetting?.value === 'true'
+    }
+
     setMembership({
       household_id: data.household_id,
       role: data.role as HouseholdMembership['role'],
       householdName: household?.name || 'Family Hub',
+      onboardingComplete,
     })
   }, [])
 
@@ -161,6 +181,19 @@ export default function AuthProvider({
         user={user}
         onComplete={() => loadMembership(user)}
         onSignOut={() => supabase.auth.signOut()}
+      />
+    )
+  }
+
+  if (!membership.onboardingComplete) {
+    return (
+      <OnboardingWizard
+        householdId={membership.household_id}
+        householdName={membership.householdName}
+        onComplete={() => loadMembership(user)}
+        onSignOut={async () => {
+          await supabase.auth.signOut()
+        }}
       />
     )
   }

@@ -165,6 +165,7 @@ export default function ParentFamilyPage() {
               >
                 <option value="parent">Parent</option>
                 <option value="child">Child</option>
+                <option value="pet">Pet</option>
               </select>
 
               <input
@@ -232,6 +233,7 @@ export default function ParentFamilyPage() {
                   >
                     <option value="parent">Parent</option>
                     <option value="child">Child</option>
+                    <option value="pet">Pet</option>
                   </select>
 
                   <input
