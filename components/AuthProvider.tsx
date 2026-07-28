@@ -387,7 +387,7 @@ function HouseholdSetup({
                 value={householdName}
                 onChange={(event) => setHouseholdName(event.target.value)}
                 className="w-full rounded-2xl border border-slate-300 p-4"
-                placeholder="e.g. The Gubb Hubb"
+                placeholder="e.g. The Smith Family"
               />
             </label>
           )}

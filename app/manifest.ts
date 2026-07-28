@@ -3,7 +3,7 @@ import type { MetadataRoute } from "next";
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: "/",
-    name: "Gubb Family Hub",
+    name: "Family Hub",
     short_name: "Family Hub",
     description: "A shared home for family meals, routines, chores, and plans.",
     start_url: "/",

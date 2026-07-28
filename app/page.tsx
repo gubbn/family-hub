@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import NavBar from '../components/NavBar'
 import WeatherCard from '../components/WeatherCard'
 import DogWalkSuggestion from '../components/DogWalkSuggestion'
+import { useHousehold } from '../components/AuthProvider'
 import { supabase } from '../lib/supabaseClient'
 
 type MealPlanItem = {
@@ -85,6 +86,7 @@ function formatNames(names: string[]) {
 }
 
 export default function Home() {
+  const { householdName } = useHousehold()
   const [mealPlan, setMealPlan] = useState<MealPlanItem[]>([])
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([])
   const [points, setPoints] = useState<Record<string, number>>({})
@@ -345,7 +347,7 @@ export default function Home() {
 
         <section className="mb-4 rounded-2xl bg-white p-5 shadow-sm">
           <h1 className="mb-2 text-3xl font-bold tracking-tight">
-            The Gubb Hubb
+            {householdName}
           </h1>
 
           <p className="text-sm text-slate-600">

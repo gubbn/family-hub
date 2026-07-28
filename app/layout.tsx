@@ -14,9 +14,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Gubb Family Hub",
+  title: "Family Hub",
   description: "A shared home for family meals, routines, chores, and plans.",
-  applicationName: "Gubb Family Hub",
+  applicationName: "Family Hub",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
