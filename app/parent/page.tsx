@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import NavBar from '../../components/NavBar'
 import ParentGate from '../../components/ParentGate'
+import HouseholdSupportCode from '../../components/HouseholdSupportCode'
 
 const parentCards = [
   {
@@ -70,27 +71,30 @@ export default function ParentPage() {
         </h1>
 
         <ParentGate>
-          <section className="grid gap-4 md:grid-cols-2">
-            {parentCards.map((card) => (
-              <Link
-                key={card.href}
-                href={card.href}
-                className="rounded-3xl bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-              >
-                <div className="mb-3 text-5xl">
-                  {card.emoji}
-                </div>
+          <>
+            <section className="grid gap-4 md:grid-cols-2">
+              {parentCards.map((card) => (
+                <Link
+                  key={card.href}
+                  href={card.href}
+                  className="rounded-3xl bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                >
+                  <div className="mb-3 text-5xl">
+                    {card.emoji}
+                  </div>
 
-                <h2 className="mb-2 text-2xl font-semibold">
-                  {card.title}
-                </h2>
+                  <h2 className="mb-2 text-2xl font-semibold">
+                    {card.title}
+                  </h2>
 
-                <p className="text-sm text-slate-600">
-                  {card.description}
-                </p>
-              </Link>
-            ))}
-          </section>
+                  <p className="text-sm text-slate-600">
+                    {card.description}
+                  </p>
+                </Link>
+              ))}
+            </section>
+            <HouseholdSupportCode />
+          </>
         </ParentGate>
       </div>
     </main>
