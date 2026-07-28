@@ -36,6 +36,7 @@ type FamilyMember = {
   age: number | null
   avatar_emoji: string | null
   favourite_colour: string | null
+  pet_type: 'dog' | 'cat' | 'other' | null
 }
 
 export default function ParentFamilyPage() {
@@ -44,12 +45,13 @@ export default function ParentFamilyPage() {
   const [newEmoji, setNewEmoji] = useState('🙂')
   const [newRole, setNewRole] = useState('child')
   const [newAge, setNewAge] = useState('')
+  const [newPetType, setNewPetType] = useState<'dog' | 'cat' | 'other'>('dog')
   const [status, setStatus] = useState('')
 
   async function loadFamilyMembers() {
     const { data, error } = await supabase
       .from('family_members')
-      .select('id, name, role, age, avatar_emoji, favourite_colour')
+      .select('id, name, role, age, avatar_emoji, favourite_colour, pet_type')
       .order('display_order')
 
     if (error) {
@@ -75,6 +77,7 @@ export default function ParentFamilyPage() {
         name: trimmedName,
         avatar_emoji: newEmoji.trim() || '🙂',
         role: newRole,
+        pet_type: newRole === 'pet' ? newPetType : null,
         age: newAge ? Number(newAge) : null,
       })
 
@@ -88,6 +91,7 @@ export default function ParentFamilyPage() {
     setNewEmoji('🙂')
     setNewRole('child')
     setNewAge('')
+    setNewPetType('dog')
     setStatus('Family member added')
     await loadFamilyMembers()
   }
@@ -160,7 +164,13 @@ export default function ParentFamilyPage() {
 
               <select
                 value={newRole}
-                onChange={(event) => setNewRole(event.target.value)}
+                onChange={(event) => {
+                  const role = event.target.value
+                  setNewRole(role)
+                  if (role === 'pet') {
+                    setNewEmoji('🐶')
+                  }
+                }}
                 className="rounded-2xl border border-slate-200 p-4"
               >
                 <option value="parent">Parent</option>
@@ -176,6 +186,24 @@ export default function ParentFamilyPage() {
                 placeholder="Age"
               />
             </div>
+
+            {newRole === 'pet' && (
+              <select
+                value={newPetType}
+                onChange={(event) => {
+                  const petType = event.target.value as 'dog' | 'cat' | 'other'
+                  setNewPetType(petType)
+                  setNewEmoji(
+                    petType === 'dog' ? '🐶' : petType === 'cat' ? '🐱' : '🐾'
+                  )
+                }}
+                className="mt-4 rounded-2xl border border-slate-200 p-4"
+              >
+                <option value="dog">Dog</option>
+                <option value="cat">Cat</option>
+                <option value="other">Other pet</option>
+              </select>
+            )}
 
             <button
               onClick={addFamilyMember}
@@ -227,6 +255,10 @@ export default function ParentFamilyPage() {
                     onChange={(event) =>
                       updateFamilyMember(member.id, {
                         role: event.target.value,
+                        pet_type:
+                          event.target.value === 'pet'
+                            ? member.pet_type || 'dog'
+                            : null,
                       })
                     }
                     className="rounded-xl border border-slate-200 bg-white p-3"
@@ -235,6 +267,25 @@ export default function ParentFamilyPage() {
                     <option value="child">Child</option>
                     <option value="pet">Pet</option>
                   </select>
+
+                  {member.role === 'pet' && (
+                    <select
+                      value={member.pet_type || 'other'}
+                      onChange={(event) =>
+                        updateFamilyMember(member.id, {
+                          pet_type: event.target.value as
+                            | 'dog'
+                            | 'cat'
+                            | 'other',
+                        })
+                      }
+                      className="rounded-xl border border-slate-200 bg-white p-3 md:col-start-3"
+                    >
+                      <option value="dog">Dog</option>
+                      <option value="cat">Cat</option>
+                      <option value="other">Other pet</option>
+                    </select>
+                  )}
 
                   <input
                     type="number"

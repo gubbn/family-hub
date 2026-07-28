@@ -60,6 +60,7 @@ export default function ChoresPage() {
       const membersResponse = await supabase
         .from('family_members')
         .select('id, name, avatar_emoji')
+        .or('role.is.null,role.neq.pet')
         .order('display_order')
 
       const safeMembers = membersResponse.data || []

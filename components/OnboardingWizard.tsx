@@ -7,6 +7,7 @@ type Profile = {
   name: string
   role: 'parent' | 'child' | 'pet'
   emoji: string
+  petType: 'dog' | 'cat' | 'other' | null
 }
 
 type SetupChoices = {
@@ -66,7 +67,7 @@ export default function OnboardingWizard({
 }) {
   const [step, setStep] = useState(0)
   const [profiles, setProfiles] = useState<Profile[]>([
-    { name: '', role: 'child', emoji: '🧒' },
+    { name: '', role: 'child', emoji: '🧒', petType: null },
   ])
   const [choices, setChoices] = useState<SetupChoices>({
     meals: false,
@@ -90,7 +91,12 @@ export default function OnboardingWizard({
   function addProfile(role: Profile['role']) {
     setProfiles((current) => [
       ...current,
-      { name: '', role, emoji: profileDefaults[role] },
+      {
+        name: '',
+        role,
+        emoji: profileDefaults[role],
+        petType: role === 'pet' ? 'dog' : null,
+      },
     ])
   }
 
@@ -221,6 +227,7 @@ export default function OnboardingWizard({
                       const role = event.target.value as Profile['role']
                       updateProfile(index, {
                         role,
+                        petType: role === 'pet' ? 'dog' : null,
                         emoji:
                           profile.emoji === profileDefaults[profile.role]
                             ? profileDefaults[role]
@@ -233,6 +240,31 @@ export default function OnboardingWizard({
                     <option value="child">Child</option>
                     <option value="pet">Pet</option>
                   </select>
+                  {profile.role === 'pet' && (
+                    <select
+                      aria-label="Pet type"
+                      value={profile.petType || 'other'}
+                      onChange={(event) => {
+                        const petType = event.target.value as NonNullable<
+                          Profile['petType']
+                        >
+                        updateProfile(index, {
+                          petType,
+                          emoji:
+                            petType === 'dog'
+                              ? '🐶'
+                              : petType === 'cat'
+                                ? '🐱'
+                                : '🐾',
+                        })
+                      }}
+                      className="rounded-xl border border-slate-200 bg-white p-3 sm:col-start-3"
+                    >
+                      <option value="dog">Dog</option>
+                      <option value="cat">Cat</option>
+                      <option value="other">Other pet</option>
+                    </select>
+                  )}
                   <button
                     type="button"
                     onClick={() => removeProfile(index)}

@@ -31,6 +31,8 @@ type FamilyMember = {
   id: string
   name: string
   avatar_emoji: string | null
+  role: string | null
+  pet_type: string | null
 }
 
 type WeeklyEvent = {
@@ -102,6 +104,7 @@ export default function Home() {
   const [choreCompletions, setChoreCompletions] = useState<Completion[]>([])
   const [routineStreaks, setRoutineStreaks] = useState<RoutineStreak[]>([])
   const [loading, setLoading] = useState(true)
+  const [hasDog, setHasDog] = useState(false)
 
   const todayNumber = useMemo(() => {
     const jsDay = new Date().getDay()
@@ -123,7 +126,7 @@ export default function Home() {
 
     const { data: membersData, error: membersError } = await supabase
       .from('family_members')
-      .select('id, name, avatar_emoji')
+      .select('id, name, avatar_emoji, role, pet_type')
       .order('display_order')
 
     const { data: completedData, error: completedError } = await supabase
@@ -176,7 +179,13 @@ export default function Home() {
     if (spendingError) console.error('Reward spending error:', spendingError)
 
     setMealPlan((mealData as MealPlanItem[]) || [])
-    setFamilyMembers((membersData as FamilyMember[]) || [])
+    const allMembers = (membersData as FamilyMember[]) || []
+    setFamilyMembers(allMembers.filter((member) => member.role !== 'pet'))
+    setHasDog(
+      allMembers.some(
+        (member) => member.role === 'pet' && member.pet_type === 'dog'
+      )
+    )
     setChoreCompletions((completedData as Completion[]) || [])
     setChoreAssignments((assignmentData as ChoreAssignment[]) || [])
     setEvents((eventsData as WeeklyEvent[]) || [])
@@ -505,15 +514,17 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="rounded-xl bg-blue-50 p-4">
-              <div className="text-sm font-medium text-blue-700">
-                Dog walk
-              </div>
+            {hasDog && (
+              <div className="rounded-xl bg-blue-50 p-4">
+                <div className="text-sm font-medium text-blue-700">
+                  Dog walk
+                </div>
 
-              <div className="mt-1 text-lg font-bold">
-                <DogWalkSuggestion />
+                <div className="mt-1 text-lg font-bold">
+                  <DogWalkSuggestion />
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </section>
 

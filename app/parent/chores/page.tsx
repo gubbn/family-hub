@@ -41,6 +41,7 @@ export default function ParentChoresPage() {
     const { data: membersData } = await supabase
       .from('family_members')
       .select('id, name, avatar_emoji')
+      .or('role.is.null,role.neq.pet')
       .order('display_order')
 
     const { data: choresData } = await supabase
