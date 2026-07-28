@@ -1,0 +1,102 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { supabase } from '../lib/supabaseClient'
+
+type Chore = {
+  id: string
+  title: string
+  points: number
+}
+
+type CompletedChore = {
+  chore_id: string
+}
+
+export default function Home() {
+  const [chores, setChores] = useState<Chore[]>([])
+  const [completed, setCompleted] = useState<string[]>([])
+  const [loading, setLoading] = useState(true)
+
+  async function loadData() {
+    const { data: choresData } = await supabase
+      .from('chores')
+      .select('id, title, points')
+      .eq('active', true)
+
+    const today = new Date().toISOString().split('T')[0]
+
+    const { data: completedData } = await supabase
+      .from('chore_completions')
+      .select('chore_id')
+      .gte('completed_at', today)
+
+    setChores(choresData || [])
+
+    setCompleted(
+      completedData?.map((c: CompletedChore) => c.chore_id) || []
+    )
+
+    setLoading(false)
+  }
+
+  async function completeChore(choreId: string) {
+    if (completed.includes(choreId)) return
+
+    const { error } = await supabase
+      .from('chore_completions')
+      .insert({
+        chore_id: choreId
+      })
+
+    if (!error) {
+      setCompleted([...completed, choreId])
+    }
+  }
+
+  useEffect(() => {
+    loadData()
+  }, [])
+
+  return (
+    <main className="min-h-screen bg-slate-100 p-6">
+      <h1 className="mb-6 text-4xl font-bold">
+        Family Hub
+      </h1>
+
+      <div className="rounded-2xl bg-white p-6 shadow">
+        <h2 className="mb-4 text-2xl font-semibold">
+          Today's Chores
+        </h2>
+
+        {loading && <p>Loading...</p>}
+
+        <div className="space-y-3">
+          {chores.map((chore) => {
+            const isComplete = completed.includes(chore.id)
+
+            return (
+              <button
+                key={chore.id}
+                onClick={() => completeChore(chore.id)}
+                className={`w-full rounded-xl border p-4 text-left text-xl transition ${
+                  isComplete
+                    ? 'bg-green-100 border-green-400 opacity-70'
+                    : 'bg-white hover:bg-slate-50'
+                }`}
+              >
+                <div>
+                  {isComplete ? '✅' : '⬜'} {chore.title}
+                </div>
+
+                <div className="text-sm text-slate-500">
+                  {chore.points} points
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    </main>
+  )
+}

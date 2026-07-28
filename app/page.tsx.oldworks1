@@ -1,0 +1,68 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { supabase } from '../lib/supabaseClient'
+
+type Chore = {
+  id: string
+  title: string
+  points: number
+}
+
+export default function Home() {
+  const [chores, setChores] = useState<Chore[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function loadChores() {
+      const { data, error } = await supabase
+        .from('chores')
+        .select('id, title, points')
+
+      if (error) {
+        console.error('Supabase error:', {
+  message: error.message,
+  details: error.details,
+  hint: error.hint,
+  code: error.code,
+})
+      } else {
+        setChores(data)
+      }
+
+      setLoading(false)
+    }
+
+    loadChores()
+  }, [])
+
+  return (
+    <main className="min-h-screen bg-slate-100 p-6">
+      <h1 className="mb-6 text-4xl font-bold">
+        Family Hub
+      </h1>
+
+      <div className="rounded-2xl bg-white p-6 shadow">
+        <h2 className="mb-4 text-2xl font-semibold">
+          Today's Chores
+        </h2>
+
+        {loading && <p>Loading...</p>}
+
+        <div className="space-y-3">
+          {chores.map((chore) => (
+            <div
+              key={chore.id}
+              className="rounded-xl border p-4 text-xl"
+            >
+              ✅ {chore.title}
+              <div className="text-sm text-slate-500">
+                {chore.points} points
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </main>
+  )
+}
