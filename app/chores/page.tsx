@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabaseClient'
 import NavBar from '../../components/NavBar'
+import { calculatePointBalances } from '../../lib/points'
 
 type FamilyMember = {
   id: string
@@ -24,7 +25,7 @@ type ChoreCompletion = {
   chore_id: string
   completed_by: string | null
   completed_at: string
-  chores: { points: number } | { points: number }[] | null
+  points_awarded: number
 }
 
 type ChoreAssignment = {
@@ -56,8 +57,6 @@ export default function ChoresPage() {
     setLoading(true)
 
     try {
-      const today = getTodayDate()
-
       const membersResponse = await supabase
         .from('family_members')
         .select('id, name, avatar_emoji')
@@ -70,7 +69,8 @@ export default function ChoresPage() {
         setSelectedMember(activeMember)
       }
 
-      const [assignmentsResponse, completionsResponse] = await Promise.all([
+      const [assignmentsResponse, completionsResponse, spendingResponse] =
+        await Promise.all([
         supabase
           .from('chore_assignments')
           .select(`
@@ -90,10 +90,12 @@ export default function ChoresPage() {
             chore_id,
             completed_by,
             completed_at,
-            chores (
-              points
-            )
+            points_awarded
           `),
+        supabase
+          .from('reward_requests')
+          .select('family_member_id, points_cost')
+          .eq('status', 'approved'),
       ])
 
       if (assignmentsResponse.error) {
@@ -102,6 +104,9 @@ export default function ChoresPage() {
 
       if (completionsResponse.error) {
         console.error('Load chore completions error:', completionsResponse.error)
+      }
+      if (spendingResponse.error) {
+        console.error('Load reward spending error:', spendingResponse.error)
       }
 
       const safeChores: Chore[] =
@@ -120,22 +125,12 @@ export default function ChoresPage() {
       setChores(safeChores)
       setCompletions(safeCompletions)
 
-      const totals: Record<string, number> = {}
-
-      safeCompletions
-        .filter((completion) => completion.completed_at >= today)
-        .forEach((completion) => {
-          if (!completion.completed_by) return
-
-          const chorePoints = Array.isArray(completion.chores)
-            ? completion.chores[0]?.points || 0
-            : completion.chores?.points || 0
-
-          totals[completion.completed_by] =
-            (totals[completion.completed_by] || 0) + chorePoints
-        })
-
-      setPoints(totals)
+      setPoints(
+        calculatePointBalances(
+          safeCompletions,
+          spendingResponse.data || []
+        )
+      )
     } catch (error) {
       console.error('Load chores failed:', error)
     } finally {
@@ -309,7 +304,7 @@ export default function ChoresPage() {
                     <div className="text-lg font-semibold">{member.name}</div>
 
                     <div className="text-sm text-slate-500">
-                      {points[member.id] || 0} points today
+                      {points[member.id] || 0} points available
                     </div>
                   </div>
                 </div>

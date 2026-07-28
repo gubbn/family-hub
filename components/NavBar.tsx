@@ -7,6 +7,7 @@ import { useHousehold } from './AuthProvider'
 const links = [
   { href: '/', label: 'Dashboard', emoji: '🏠' },
   { href: '/chores', label: 'Chores', emoji: '🧹' },
+  { href: '/rewards', label: 'Rewards', emoji: '🎁' },
   { href: '/routines', label: 'Routines', emoji: '🌅' },
   { href: '/schedule', label: 'Our Day', emoji: '📅' },
   { href: '/meals', label: 'Meals', emoji: '🍽️' },

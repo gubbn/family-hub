@@ -47,6 +47,12 @@ const parentCards = [
   emoji: '🌅',
 },
   {
+    title: 'Rewards',
+    description: 'Set rewards, choose point values and approve spending.',
+    href: '/parent/rewards',
+    emoji: '🎁',
+  },
+  {
     title: 'Parent Access',
     description: 'Invite another parent or manage existing access.',
     href: '/parent/access',

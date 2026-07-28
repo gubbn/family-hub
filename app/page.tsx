@@ -1,11 +1,13 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import NavBar from '../components/NavBar'
 import WeatherCard from '../components/WeatherCard'
 import DogWalkSuggestion from '../components/DogWalkSuggestion'
 import { useHousehold } from '../components/AuthProvider'
 import { supabase } from '../lib/supabaseClient'
+import { calculatePointBalances } from '../lib/points'
 
 type MealPlanItem = {
   day_of_week: number
@@ -17,7 +19,12 @@ type Completion = {
   completed_by: string | null
   chore_id?: string
   completed_at?: string
-  chores: { points: number } | { points: number }[] | null
+  points_awarded: number
+}
+
+type RewardSpend = {
+  family_member_id: string
+  points_cost: number
 }
 
 type FamilyMember = {
@@ -104,8 +111,6 @@ export default function Home() {
   async function loadDashboardData() {
     setLoading(true)
 
-    const today = getTodayDate()
-
     const { data: mealData, error: mealError } = await supabase
       .from('meal_plan')
       .select(`
@@ -127,9 +132,7 @@ export default function Home() {
         chore_id,
         completed_by,
         completed_at,
-        chores (
-          points
-        )
+        points_awarded
       `)
 
     const { data: assignmentData, error: assignmentError } = await supabase
@@ -159,12 +162,18 @@ export default function Home() {
       .eq('item_type', 'routine_step')
       .gt('streak_count', 0)
 
+    const { data: spendingData, error: spendingError } = await supabase
+      .from('reward_requests')
+      .select('family_member_id, points_cost')
+      .eq('status', 'approved')
+
     if (mealError) console.error('Meal plan error:', mealError)
     if (membersError) console.error('Members error:', membersError)
     if (completedError) console.error('Completed chores error:', completedError)
     if (assignmentError) console.error('Chore assignments error:', assignmentError)
     if (eventsError) console.error('Weekly events error:', eventsError)
     if (streakError) console.error('Routine streaks error:', streakError)
+    if (spendingError) console.error('Reward spending error:', spendingError)
 
     setMealPlan((mealData as MealPlanItem[]) || [])
     setFamilyMembers((membersData as FamilyMember[]) || [])
@@ -173,22 +182,12 @@ export default function Home() {
     setEvents((eventsData as WeeklyEvent[]) || [])
     setRoutineStreaks((streakData as RoutineStreak[]) || [])
 
-    const totals: Record<string, number> = {}
-
-    ;((completedData as Completion[]) || [])
-      .filter((completion) => completion.completed_at && completion.completed_at >= today)
-      .forEach((completion) => {
-        if (!completion.completed_by) return
-
-        const chorePoints = Array.isArray(completion.chores)
-          ? completion.chores[0]?.points || 0
-          : completion.chores?.points || 0
-
-        totals[completion.completed_by] =
-          (totals[completion.completed_by] || 0) + chorePoints
-      })
-
-    setPoints(totals)
+    setPoints(
+      calculatePointBalances(
+        (completedData as Completion[]) || [],
+        (spendingData as RewardSpend[]) || []
+      )
+    )
     setLoading(false)
   }
 
@@ -300,11 +299,7 @@ export default function Home() {
     )
 
     const pointsToday = completedToday.reduce((total, completion) => {
-      const chorePoints = Array.isArray(completion.chores)
-        ? completion.chores[0]?.points || 0
-        : completion.chores?.points || 0
-
-      return total + chorePoints
+      return total + completion.points_awarded
     }, 0)
 
     const dueToday = chores.filter((chore) => {
@@ -435,7 +430,10 @@ export default function Home() {
           </div>
 
           <div className="rounded-2xl bg-white p-5 shadow-sm">
-            <h2 className="mb-3 text-xl font-semibold">Leaderboard</h2>
+            <h2 className="mb-1 text-xl font-semibold">Points &amp; Rewards</h2>
+            <p className="mb-3 text-sm text-slate-500">
+              Available points after approved rewards.
+            </p>
 
             <div className="space-y-2">
               {leaderboard.map((member, index) => (
@@ -456,11 +454,18 @@ export default function Home() {
                   </div>
 
                   <div className="text-lg font-bold text-blue-600">
-                    {member.total}
+                    {member.total} pts
                   </div>
                 </div>
               ))}
             </div>
+
+            <Link
+              href="/rewards"
+              className="mt-4 block rounded-xl bg-purple-600 px-4 py-3 text-center font-semibold text-white hover:bg-purple-700"
+            >
+              Spend points on rewards
+            </Link>
           </div>
         </section>
 
