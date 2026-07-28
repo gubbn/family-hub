@@ -45,7 +45,13 @@ const parentCards = [
   href: '/parent/routines',
   emoji: '🌅',
 },
-{
+  {
+    title: 'Parent Access',
+    description: 'Invite another parent or manage existing access.',
+    href: '/parent/access',
+    emoji: '🔑',
+  },
+  {
   title: 'Settings',
   description: 'Manage home postcode and family app settings.',
   href: '/parent/settings',

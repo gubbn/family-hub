@@ -259,8 +259,9 @@ function HouseholdSetup({
   onComplete: () => Promise<void>
   onSignOut: () => Promise<unknown>
 }) {
-  const [mode, setMode] = useState<'claim' | 'create'>('claim')
+  const [mode, setMode] = useState<'claim' | 'join' | 'create'>('claim')
   const [claimCode, setClaimCode] = useState('')
+  const [inviteCode, setInviteCode] = useState('')
   const [householdName, setHouseholdName] = useState('')
   const [pin, setPin] = useState('')
   const [saving, setSaving] = useState(false)
@@ -271,16 +272,25 @@ function HouseholdSetup({
     setSaving(true)
     setMessage('')
 
-    const request =
-      mode === 'claim'
-        ? supabase.rpc('claim_existing_household', {
-            claim_code: claimCode.trim().toUpperCase(),
-            parent_pin: pin,
-          })
-        : supabase.rpc('create_household', {
-            household_name: householdName.trim(),
-            parent_pin: pin,
-          })
+    const request = (() => {
+      if (mode === 'claim') {
+        return supabase.rpc('claim_existing_household', {
+          claim_code: claimCode.trim().toUpperCase(),
+          parent_pin: pin,
+        })
+      }
+
+      if (mode === 'join') {
+        return supabase.rpc('accept_parent_invite', {
+          invite_code: inviteCode.trim().toUpperCase(),
+        })
+      }
+
+      return supabase.rpc('create_household', {
+        household_name: householdName.trim(),
+        parent_pin: pin,
+      })
+    })()
 
     const { error } = await request
 
@@ -304,7 +314,7 @@ function HouseholdSetup({
           this household and won&apos;t need email accounts.
         </p>
 
-        <div className="mt-6 grid grid-cols-2 gap-3">
+        <div className="mt-6 grid gap-3 sm:grid-cols-3">
           <button
             type="button"
             onClick={() => setMode('claim')}
@@ -313,6 +323,15 @@ function HouseholdSetup({
             }`}
           >
             Claim my existing hub
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode('join')}
+            className={`rounded-2xl p-4 font-semibold ${
+              mode === 'join' ? 'bg-blue-600 text-white' : 'bg-slate-100'
+            }`}
+          >
+            Join with an invite
           </button>
           <button
             type="button"
@@ -326,7 +345,7 @@ function HouseholdSetup({
         </div>
 
         <form onSubmit={finishSetup} className="mt-6 space-y-4">
-          {mode === 'claim' ? (
+          {mode === 'claim' && (
             <label className="block">
               <span className="mb-2 block text-sm font-medium">
                 Household claim code
@@ -339,7 +358,24 @@ function HouseholdSetup({
                 placeholder="XXXX-XXXX-XXXX"
               />
             </label>
-          ) : (
+          )}
+
+          {mode === 'join' && (
+            <label className="block">
+              <span className="mb-2 block text-sm font-medium">
+                Parent invitation code
+              </span>
+              <input
+                required
+                value={inviteCode}
+                onChange={(event) => setInviteCode(event.target.value)}
+                className="w-full rounded-2xl border border-slate-300 p-4 uppercase"
+                placeholder="XXXXXX-XXXXXX-XXXXXX"
+              />
+            </label>
+          )}
+
+          {mode === 'create' && (
             <label className="block">
               <span className="mb-2 block text-sm font-medium">
                 What would you like to call your hub?
@@ -356,23 +392,25 @@ function HouseholdSetup({
             </label>
           )}
 
-          <label className="block">
-            <span className="mb-2 block text-sm font-medium">
-              Choose a Parent Zone PIN
-            </span>
-            <input
-              type="password"
-              inputMode="numeric"
-              pattern="[0-9]{4,8}"
-              minLength={4}
-              maxLength={8}
-              required
-              value={pin}
-              onChange={(event) => setPin(event.target.value)}
-              className="w-full rounded-2xl border border-slate-300 p-4"
-              placeholder="4 to 8 numbers"
-            />
-          </label>
+          {mode !== 'join' && (
+            <label className="block">
+              <span className="mb-2 block text-sm font-medium">
+                Choose a Parent Zone PIN
+              </span>
+              <input
+                type="password"
+                inputMode="numeric"
+                pattern="[0-9]{4,8}"
+                minLength={4}
+                maxLength={8}
+                required
+                value={pin}
+                onChange={(event) => setPin(event.target.value)}
+                className="w-full rounded-2xl border border-slate-300 p-4"
+                placeholder="4 to 8 numbers"
+              />
+            </label>
+          )}
 
           <button
             type="submit"
