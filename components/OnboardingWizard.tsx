@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, type Dispatch, type SetStateAction } from 'react'
+import { useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { supabase } from '../lib/supabaseClient'
 
 type Profile = {
@@ -24,7 +24,7 @@ type MealDraft = {
 
 type WeekDraft = {
   title: string
-  dayOfWeek: number
+  daysOfWeek: number[]
   startTime: string
 }
 
@@ -32,7 +32,7 @@ type ChoreDraft = {
   title: string
   points: number
   frequency: 'daily' | 'weekly'
-  assigneeIndex: number
+  assigneeIndexes: number[]
 }
 
 type RoutineDraft = {
@@ -47,6 +47,16 @@ const profileDefaults: Record<Profile['role'], string> = {
   child: '🧒',
   pet: '🐶',
 }
+
+const weekDays = [
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+  'Sunday',
+]
 
 const setupSteps = [
   {
@@ -108,10 +118,10 @@ export default function OnboardingWizard({
     { title: '', ingredients: '' },
   ])
   const [weekEvents, setWeekEvents] = useState<WeekDraft[]>([
-    { title: '', dayOfWeek: 1, startTime: '' },
+    { title: '', daysOfWeek: [1], startTime: '' },
   ])
   const [chores, setChores] = useState<ChoreDraft[]>([
-    { title: '', points: 5, frequency: 'daily', assigneeIndex: -1 },
+    { title: '', points: 5, frequency: 'daily', assigneeIndexes: [] },
   ])
   const [routines, setRoutines] = useState<RoutineDraft[]>([
     {
@@ -196,6 +206,16 @@ export default function OnboardingWizard({
       return
     }
 
+    if (
+      stageKey === 'week' &&
+      weekEvents.some(
+        (event) => event.title.trim() && event.daysOfWeek.length === 0
+      )
+    ) {
+      setMessage('Choose at least one day for every weekly event.')
+      return
+    }
+
     setMessage('')
     setActiveSetup(null)
     setStep((current) => current + 1)
@@ -231,7 +251,15 @@ export default function OnboardingWizard({
         ? meals.filter((meal) => meal.title.trim())
         : [],
       week_entries: choices.week
-        ? weekEvents.filter((event) => event.title.trim())
+        ? weekEvents
+            .filter((event) => event.title.trim())
+            .flatMap((event) =>
+              event.daysOfWeek.map((dayOfWeek) => ({
+                title: event.title,
+                startTime: event.startTime,
+                dayOfWeek,
+              }))
+            )
         : [],
       chore_entries: choices.chores
         ? chores.filter((chore) => chore.title.trim())
@@ -603,6 +631,7 @@ function GuidedStageForm({
   onBack: () => void
   onContinue: () => void
 }) {
+  const newestMealInputRef = useRef<HTMLInputElement>(null)
   const assignablePeople = profiles
     .map((profile, index) => ({ ...profile, index }))
     .filter((profile) => profile.role !== 'pet')
@@ -611,13 +640,36 @@ function GuidedStageForm({
     index,
   }))
 
+  function addMealAtTop() {
+    setMeals((current) => [
+      { title: '', ingredients: '' },
+      ...current,
+    ])
+
+    window.requestAnimationFrame(() => {
+      newestMealInputRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      })
+      newestMealInputRef.current?.focus()
+    })
+  }
+
   return (
     <div className="mt-8">
       {stageKey === 'meals' && (
         <div className="space-y-4">
+          <div className="sticky top-3 z-10 rounded-2xl bg-white/95 py-2 backdrop-blur">
+            <AddButton
+              label="+ Add another meal"
+              onClick={addMealAtTop}
+            />
+          </div>
+
           {meals.map((meal, index) => (
             <div key={index} className="rounded-2xl bg-slate-50 p-4">
               <input
+                ref={index === 0 ? newestMealInputRef : undefined}
                 value={meal.title}
                 onChange={(event) =>
                   setMeals((current) =>
@@ -651,15 +703,6 @@ function GuidedStageForm({
               )}
             </div>
           ))}
-          <AddButton
-            label="+ Add another meal"
-            onClick={() =>
-              setMeals((current) => [
-                ...current,
-                { title: '', ingredients: '' },
-              ])
-            }
-          />
         </div>
       )}
 
@@ -668,58 +711,76 @@ function GuidedStageForm({
           {weekEvents.map((weekEvent, index) => (
             <div
               key={index}
-              className="grid gap-3 rounded-2xl bg-slate-50 p-4 sm:grid-cols-[1fr_150px_130px]"
+              className="rounded-2xl bg-slate-50 p-4"
             >
-              <input
-                value={weekEvent.title}
-                onChange={(event) =>
-                  setWeekEvents((current) =>
-                    replaceAt(current, index, { title: event.target.value })
-                  )
-                }
-                className="rounded-xl border border-slate-200 bg-white p-3"
-                placeholder="School, club or appointment"
-                maxLength={120}
-              />
-              <select
-                value={weekEvent.dayOfWeek}
-                onChange={(event) =>
-                  setWeekEvents((current) =>
-                    replaceAt(current, index, {
-                      dayOfWeek: Number(event.target.value),
-                    })
-                  )
-                }
-                className="rounded-xl border border-slate-200 bg-white p-3"
-                aria-label="Day of week"
-              >
-                {[
-                  'Monday',
-                  'Tuesday',
-                  'Wednesday',
-                  'Thursday',
-                  'Friday',
-                  'Saturday',
-                  'Sunday',
-                ].map((day, dayIndex) => (
-                  <option key={day} value={dayIndex + 1}>
-                    {day}
-                  </option>
-                ))}
-              </select>
-              <input
-                type="time"
-                value={weekEvent.startTime}
-                onChange={(event) =>
-                  setWeekEvents((current) =>
-                    replaceAt(current, index, {
-                      startTime: event.target.value,
-                    })
-                  )
-                }
-                className="rounded-xl border border-slate-200 bg-white p-3"
-                aria-label="Start time"
-              />
+              <div className="grid gap-3 sm:grid-cols-[1fr_130px]">
+                <input
+                  value={weekEvent.title}
+                  onChange={(event) =>
+                    setWeekEvents((current) =>
+                      replaceAt(current, index, { title: event.target.value })
+                    )
+                  }
+                  className="rounded-xl border border-slate-200 bg-white p-3"
+                  placeholder="School, club or appointment"
+                  maxLength={120}
+                />
+                <input
+                  type="time"
+                  value={weekEvent.startTime}
+                  onChange={(event) =>
+                    setWeekEvents((current) =>
+                      replaceAt(current, index, {
+                        startTime: event.target.value,
+                      })
+                    )
+                  }
+                  className="rounded-xl border border-slate-200 bg-white p-3"
+                  aria-label="Start time"
+                />
+              </div>
+
+              <fieldset className="mt-3">
+                <legend className="mb-2 text-sm font-semibold text-slate-600">
+                  Which days does this happen?
+                </legend>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {weekDays.map((day, dayIndex) => {
+                    const dayNumber = dayIndex + 1
+                    const checked = weekEvent.daysOfWeek.includes(dayNumber)
+
+                    return (
+                      <label
+                        key={day}
+                        className={`flex items-center gap-2 rounded-xl border p-3 text-sm ${
+                          checked
+                            ? 'border-blue-400 bg-blue-50'
+                            : 'border-slate-200 bg-white'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() =>
+                            setWeekEvents((current) =>
+                              replaceAt(current, index, {
+                                daysOfWeek: checked
+                                  ? weekEvent.daysOfWeek.filter(
+                                      (value) => value !== dayNumber
+                                    )
+                                  : [...weekEvent.daysOfWeek, dayNumber].sort(),
+                              })
+                            )
+                          }
+                          className="h-4 w-4"
+                        />
+                        {day}
+                      </label>
+                    )
+                  })}
+                </div>
+              </fieldset>
+
               {weekEvents.length > 1 && (
                 <RemoveButton
                   onClick={() =>
@@ -736,7 +797,7 @@ function GuidedStageForm({
             onClick={() =>
               setWeekEvents((current) => [
                 ...current,
-                { title: '', dayOfWeek: 1, startTime: '' },
+                { title: '', daysOfWeek: [1], startTime: '' },
               ])
             }
           />
@@ -761,25 +822,56 @@ function GuidedStageForm({
                 placeholder="Chore name"
                 maxLength={120}
               />
-              <select
-                value={chore.assigneeIndex}
-                onChange={(event) =>
-                  setChores((current) =>
-                    replaceAt(current, index, {
-                      assigneeIndex: Number(event.target.value),
-                    })
-                  )
-                }
-                className="rounded-xl border border-slate-200 bg-white p-3"
-                aria-label="Assign chore to"
-              >
-                <option value={-1}>Leave unassigned</option>
-                {assignablePeople.map((profile) => (
-                  <option key={profile.index} value={profile.index}>
-                    {profile.emoji} {profile.name}
-                  </option>
-                ))}
-              </select>
+              <fieldset className="rounded-xl border border-slate-200 bg-white p-3 sm:col-span-2">
+                <legend className="px-1 text-sm font-semibold text-slate-600">
+                  Who can do this chore?
+                </legend>
+                <p className="mb-3 text-xs text-slate-500">
+                  Tick everyone this chore applies to. Leave all unticked to
+                  keep it unassigned.
+                </p>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {assignablePeople.map((profile) => {
+                    const checked = chore.assigneeIndexes.includes(
+                      profile.index
+                    )
+
+                    return (
+                      <label
+                        key={profile.index}
+                        className={`flex items-center gap-2 rounded-xl border p-3 text-sm ${
+                          checked
+                            ? 'border-green-400 bg-green-50'
+                            : 'border-slate-200'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() =>
+                            setChores((current) =>
+                              replaceAt(current, index, {
+                                assigneeIndexes: checked
+                                  ? chore.assigneeIndexes.filter(
+                                      (value) => value !== profile.index
+                                    )
+                                  : [
+                                      ...chore.assigneeIndexes,
+                                      profile.index,
+                                    ].sort((a, b) => a - b),
+                              })
+                            )
+                          }
+                          className="h-4 w-4"
+                        />
+                        <span>
+                          {profile.emoji} {profile.name}
+                        </span>
+                      </label>
+                    )
+                  })}
+                </div>
+              </fieldset>
               <label className="rounded-xl bg-white p-3 text-sm">
                 <span className="mb-1 block text-slate-500">Points</span>
                 <input
@@ -832,7 +924,7 @@ function GuidedStageForm({
                   title: '',
                   points: 5,
                   frequency: 'daily',
-                  assigneeIndex: -1,
+                  assigneeIndexes: [],
                 },
               ])
             }
