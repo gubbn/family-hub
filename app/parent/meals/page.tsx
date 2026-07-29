@@ -81,6 +81,12 @@ export default function ParentMealsPage() {
   const [newMealStaple, setNewMealStaple] = useState('')
   const [newMealIngredients, setNewMealIngredients] = useState('')
   const [generatedMenu, setGeneratedMenu] = useState<GeneratedMeal[]>([])
+  const [selectedMealId, setSelectedMealId] = useState('')
+  const [editMealTitle, setEditMealTitle] = useState('')
+  const [editMealStaple, setEditMealStaple] = useState('')
+  const [editMealNotes, setEditMealNotes] = useState('')
+  const [editMealIngredients, setEditMealIngredients] = useState('')
+  const [savingMeal, setSavingMeal] = useState(false)
   const [status, setStatus] = useState('')
 
   async function loadData() {
@@ -145,75 +151,63 @@ export default function ParentMealsPage() {
     await loadData()
   }
 
-  async function updateMealTitle(mealId: string, title: string) {
-    const trimmedTitle = title.trim()
+  function selectMealForEditing(mealId: string) {
+    setSelectedMealId(mealId)
+
+    if (!mealId) {
+      setEditMealTitle('')
+      setEditMealStaple('')
+      setEditMealNotes('')
+      setEditMealIngredients('')
+      return
+    }
+
+    const meal = meals.find((item) => item.id === mealId)
+    if (!meal) return
+
+    setEditMealTitle(meal.title)
+    setEditMealStaple(meal.staple || '')
+    setEditMealNotes(meal.notes || '')
+    setEditMealIngredients(ingredientsForEditing(meal.ingredients))
+    setStatus('')
+  }
+
+  async function saveSelectedMeal() {
+    const trimmedTitle = editMealTitle.trim()
+
+    if (!selectedMealId) {
+      setStatus('Choose a meal to edit')
+      return
+    }
 
     if (!trimmedTitle) {
       setStatus('Meal name cannot be blank')
       return
     }
 
+    setSavingMeal(true)
+
     const { error } = await supabase
       .from('meals')
-      .update({ title: trimmedTitle })
-      .eq('id', mealId)
+      .update({
+        title: trimmedTitle,
+        staple: editMealStaple || null,
+        notes: editMealNotes.trim() || null,
+        ingredients: normaliseIngredientList(editMealIngredients),
+      })
+      .eq('id', selectedMealId)
 
     if (error) {
-      console.error('Update meal title error:', error)
-      setStatus('Could not update meal title')
+      console.error('Update meal error:', error)
+      setStatus('Could not save meal changes')
+      setSavingMeal(false)
       return
     }
 
-    setStatus('Meal title saved')
+    setEditMealTitle(trimmedTitle)
+    setStatus('Meal changes saved')
     await loadData()
-  }
-
-  async function updateMealNotes(mealId: string, notes: string) {
-    const { error } = await supabase
-      .from('meals')
-      .update({ notes: notes.trim() || null })
-      .eq('id', mealId)
-
-    if (error) {
-      console.error('Update meal notes error:', error)
-      setStatus('Could not update meal notes')
-      return
-    }
-
-    setStatus('Meal notes saved')
-    await loadData()
-  }
-
-  async function updateMealStaple(mealId: string, staple: string) {
-    const { error } = await supabase
-      .from('meals')
-      .update({ staple: staple || null })
-      .eq('id', mealId)
-
-    if (error) {
-      console.error('Update meal staple error:', error)
-      setStatus('Could not update meal staple')
-      return
-    }
-
-    setStatus('Meal staple saved')
-    await loadData()
-  }
-
-  async function updateMealIngredients(mealId: string, ingredients: string) {
-    const { error } = await supabase
-      .from('meals')
-      .update({ ingredients: normaliseIngredientList(ingredients) })
-      .eq('id', mealId)
-
-    if (error) {
-      console.error('Update meal ingredients error:', error)
-      setStatus('Could not update meal ingredients')
-      return
-    }
-
-    setStatus('Meal ingredients saved')
-    await loadData()
+    setSavingMeal(false)
   }
 
   async function deleteMeal(mealId: string) {
@@ -225,6 +219,7 @@ export default function ParentMealsPage() {
       return
     }
 
+    selectMealForEditing('')
     setStatus('Meal deleted')
     await loadData()
   }
@@ -633,69 +628,148 @@ export default function ParentMealsPage() {
           </section>
 
           <section className="rounded-3xl bg-white p-6 shadow-sm">
-            <h2 className="mb-5 text-2xl font-semibold">Existing Meals</h2>
+            <h2 className="mb-2 text-2xl font-semibold">Edit an Existing Meal</h2>
+            <p className="mb-5 text-sm text-slate-500">
+              Choose a meal, make all the changes you need, then save once.
+            </p>
 
-            <div className="space-y-3">
-              {meals.map((meal) => (
-                <div
-                  key={meal.id}
-                  className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
-                >
-                  <div className="grid gap-3 md:grid-cols-[1fr_180px_auto]">
-                    <input
-                      defaultValue={meal.title}
-                      onBlur={(event) =>
-                        updateMealTitle(meal.id, event.target.value)
-                      }
-                      className="rounded-xl border border-slate-200 bg-white p-3"
-                    />
-
-                    <select
-                      value={meal.staple || ''}
-                      onChange={(event) =>
-                        updateMealStaple(meal.id, event.target.value)
-                      }
-                      className="rounded-xl border border-slate-200 bg-white p-3"
-                    >
-                      <option value="">No staple</option>
-
-                      {stapleOptions.map((option) => (
-                        <option key={option} value={option}>
-                          {option}
+            {meals.length === 0 ? (
+              <p className="rounded-2xl bg-slate-50 p-4 text-slate-500">
+                No meals have been added yet.
+              </p>
+            ) : (
+              <div className="space-y-5">
+                <div>
+                  <label
+                    htmlFor="existing-meal"
+                    className="mb-2 block font-semibold text-slate-700"
+                  >
+                    Meal to edit
+                  </label>
+                  <select
+                    id="existing-meal"
+                    value={selectedMealId}
+                    onChange={(event) =>
+                      selectMealForEditing(event.target.value)
+                    }
+                    className="w-full rounded-2xl border border-slate-200 bg-white p-4 text-lg"
+                  >
+                    <option value="">Choose a meal...</option>
+                    {[...meals]
+                      .sort((a, b) => a.title.localeCompare(b.title))
+                      .map((meal) => (
+                        <option key={meal.id} value={meal.id}>
+                          {meal.title}
                         </option>
                       ))}
-                    </select>
-
-                    <button
-                      onClick={() => deleteMeal(meal.id)}
-                      className="rounded-xl border border-red-200 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
-                    >
-                      Delete
-                    </button>
-                  </div>
-
-                  <div className="mt-3 grid gap-3 md:grid-cols-2">
-                    <textarea
-                      defaultValue={meal.notes || ''}
-                      onBlur={(event) =>
-                        updateMealNotes(meal.id, event.target.value)
-                      }
-                      className="min-h-24 rounded-xl border border-slate-200 bg-white p-3"
-                      placeholder="Meal notes"
-                    />
-
-                    <textarea
-                      defaultValue={ingredientsForEditing(meal.ingredients)}
-                      onBlur={(event) =>
-                        updateMealIngredients(meal.id, event.target.value)
-                      }
-                      className="min-h-24 rounded-xl border border-slate-200 bg-white p-3"
-                      placeholder={'One ingredient per line\nChicken breast\nPeppers\nWraps'}
-                    />
-                  </div>
+                  </select>
                 </div>
-              ))}
-            </div>
+
+                {selectedMealId && (
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 md:p-5">
+                    <div className="grid gap-4 md:grid-cols-[1fr_220px]">
+                      <div>
+                        <label
+                          htmlFor="edit-meal-name"
+                          className="mb-2 block text-sm font-semibold text-slate-700"
+                        >
+                          Meal name
+                        </label>
+                        <input
+                          id="edit-meal-name"
+                          value={editMealTitle}
+                          onChange={(event) =>
+                            setEditMealTitle(event.target.value)
+                          }
+                          className="w-full rounded-xl border border-slate-200 bg-white p-3"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label
+                          htmlFor="edit-meal-staple"
+                          className="mb-2 block text-sm font-semibold text-slate-700"
+                        >
+                          Meal type
+                        </label>
+                        <select
+                          id="edit-meal-staple"
+                          value={editMealStaple}
+                          onChange={(event) =>
+                            setEditMealStaple(event.target.value)
+                          }
+                          className="w-full rounded-xl border border-slate-200 bg-white p-3"
+                        >
+                          <option value="">No meal type</option>
+                          {stapleOptions.map((option) => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 grid gap-4 md:grid-cols-2">
+                      <div>
+                        <label
+                          htmlFor="edit-meal-notes"
+                          className="mb-2 block text-sm font-semibold text-slate-700"
+                        >
+                          Notes
+                        </label>
+                        <textarea
+                          id="edit-meal-notes"
+                          value={editMealNotes}
+                          onChange={(event) =>
+                            setEditMealNotes(event.target.value)
+                          }
+                          className="min-h-32 w-full rounded-xl border border-slate-200 bg-white p-3"
+                          placeholder="Anything helpful to remember"
+                        />
+                      </div>
+
+                      <div>
+                        <label
+                          htmlFor="edit-meal-ingredients"
+                          className="mb-2 block text-sm font-semibold text-slate-700"
+                        >
+                          Ingredients
+                        </label>
+                        <textarea
+                          id="edit-meal-ingredients"
+                          value={editMealIngredients}
+                          onChange={(event) =>
+                            setEditMealIngredients(event.target.value)
+                          }
+                          className="min-h-32 w-full rounded-xl border border-slate-200 bg-white p-3"
+                          placeholder={'One ingredient per line\nChicken breast\nPeppers\nWraps'}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="mt-5 flex flex-wrap gap-3">
+                      <button
+                        onClick={saveSelectedMeal}
+                        disabled={savingMeal}
+                        className="rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700 disabled:cursor-wait disabled:opacity-60"
+                      >
+                        {savingMeal ? 'Saving...' : 'Save changes'}
+                      </button>
+
+                      <button
+                        onClick={() => deleteMeal(selectedMealId)}
+                        disabled={savingMeal}
+                        className="rounded-xl border border-red-200 px-5 py-3 font-semibold text-red-600 hover:bg-red-50 disabled:opacity-60"
+                      >
+                        Delete meal
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </section>
             </div>
 

@@ -16,17 +16,72 @@ export default function ParentGate({ children }: Props) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    async function initialiseGate() {
+    let cancelled = false
+
+    async function checkGate(showLoading = false) {
+      if (!householdId) {
+        if (!cancelled) {
+          setUnlocked(false)
+          setLoading(false)
+        }
+        return
+      }
+
+      if (showLoading) setLoading(true)
+
       const { data, error } = await supabase.rpc('parent_zone_status', {
         target_household_id: householdId,
       })
 
       if (error) console.error('Parent Zone status error:', error)
-      setUnlocked(Boolean(data))
-      setLoading(false)
+
+      if (!cancelled && !error) {
+        setUnlocked((wasUnlocked) => {
+          const isUnlocked = Boolean(data)
+
+          if (wasUnlocked && !isUnlocked) {
+            setError('Parent Zone timed out. Enter your PIN again.')
+          }
+
+          return isUnlocked
+        })
+      }
+
+      if (!cancelled) setLoading(false)
     }
 
-    initialiseGate()
+    function handleExpired() {
+      setUnlocked(false)
+      setError('Parent Zone timed out. Enter your PIN again.')
+    }
+
+    function handleFocus() {
+      void checkGate()
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible') {
+        void checkGate()
+      }
+    }
+
+    void checkGate(true)
+
+    const statusInterval = window.setInterval(() => {
+      void checkGate()
+    }, 30_000)
+
+    window.addEventListener('focus', handleFocus)
+    window.addEventListener('parent-zone-expired', handleExpired)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(statusInterval)
+      window.removeEventListener('focus', handleFocus)
+      window.removeEventListener('parent-zone-expired', handleExpired)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
   }, [householdId])
 
   async function handleUnlock() {

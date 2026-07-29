@@ -1,8 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import NavBar from '../../components/NavBar'
 import { supabase } from '../../lib/supabaseClient'
+import { useHousehold } from '../../components/AuthProvider'
+import { joinMealsToPlan } from '../../lib/mealPlan'
 import {
   parseIngredientList,
   shoppingCategories,
@@ -11,71 +13,99 @@ import {
 type MealPlanItem = {
   id: string
   day_of_week: number
+  meal_id: string | null
   notes: string | null
-  meals:
-    | {
-        id: string
-        title: string
-        ingredients: string | null
-      }
-    | {
-        id: string
-        title: string
-        ingredients: string | null
-      }[]
-    | null
+  meals: {
+    id: string
+    title: string
+    ingredients: string | null
+  } | null
+}
+
+type ShoppingItem = {
+  id: string
+  category: string
+  item: string
+  completed: boolean
 }
 
 export default function ShoppingPage() {
+  const { householdId } = useHousehold()
   const [mealPlan, setMealPlan] = useState<MealPlanItem[]>([])
+  const [manualItems, setManualItems] = useState<ShoppingItem[]>([])
   const [loading, setLoading] = useState(true)
 
-  async function loadShoppingList() {
+  const loadShoppingList = useCallback(async () => {
+    if (!householdId) {
+      setLoading(false)
+      return
+    }
+
     setLoading(true)
 
-    const { data, error } = await supabase
+    const { data: planData, error: planError } = await supabase
       .from('meal_plan')
-      .select(`
-        id,
-        day_of_week,
-        notes,
-        meals (
-          id,
-          title,
-          ingredients
-        )
-      `)
+      .select('id, day_of_week, meal_id, notes')
+      .eq('household_id', householdId)
       .eq('active', true)
       .order('day_of_week', { ascending: true })
 
-    if (error) {
-      console.error('Load shopping list error:', error)
+    const { data: mealsData, error: mealsError } = await supabase
+      .from('meals')
+      .select('id, title, ingredients')
+      .eq('household_id', householdId)
+
+    const { data: itemsData, error: itemsError } = await supabase
+      .from('shopping_items')
+      .select('id, category, item, completed')
+      .eq('household_id', householdId)
+      .order('created_at', { ascending: true })
+
+    if (planError || mealsError) {
+      console.error('Load shopping list error:', planError || mealsError)
       setMealPlan([])
     } else {
-      setMealPlan((data as MealPlanItem[]) || [])
+      setMealPlan(
+        joinMealsToPlan(planData || [], mealsData || []) as MealPlanItem[]
+      )
+    }
+
+    if (itemsError) {
+      console.error('Load direct shopping items error:', itemsError)
+      setManualItems([])
+    } else {
+      setManualItems((itemsData as ShoppingItem[]) || [])
     }
 
     setLoading(false)
-  }
+  }, [householdId])
 
   useEffect(() => {
     loadShoppingList()
-  }, [])
+  }, [loadShoppingList])
 
   function getMeal(item: MealPlanItem) {
-    if (!item.meals) return null
-    return Array.isArray(item.meals) ? item.meals[0] : item.meals
+    return item.meals
   }
 
   const ingredientsByCategory = shoppingCategories
     .map((category) => ({
       category,
-      items: mealPlan.flatMap((item) => {
-        const meal = getMeal(item)
-        return parseIngredientList(meal?.ingredients || null)
-          .filter((ingredient) => ingredient.category === category)
-          .map((ingredient) => ingredient.item)
-      }),
+      items: [
+        ...manualItems
+          .filter(
+            (item) =>
+              (item.category || 'Other').toLowerCase() ===
+              category.toLowerCase()
+          )
+          .map((item) => item.item),
+        ...mealPlan.flatMap((item) => {
+          const meal = getMeal(item)
+          return parseIngredientList(meal?.ingredients || null)
+            .filter((ingredient) => ingredient.category === category)
+            .map((ingredient) => ingredient.item)
+        }),
+      ],
     }))
     .map((group) => ({
       ...group,
@@ -94,11 +124,11 @@ export default function ShoppingPage() {
 
         <section className="rounded-3xl bg-white p-6 shadow-sm">
           <h2 className="mb-2 text-2xl font-semibold">
-            This Week&apos;s Ingredients
+            This Week&apos;s Shopping List
           </h2>
 
           <p className="mb-6 text-sm text-slate-500">
-            Ingredients are pulled from the meals currently on the weekly menu.
+            Meal ingredients and extras added directly by a parent.
           </p>
 
           {loading && (
@@ -107,9 +137,9 @@ export default function ShoppingPage() {
             </p>
           )}
 
-          {!loading && mealPlan.length === 0 && (
+          {!loading && ingredientsByCategory.length === 0 && (
             <p className="text-slate-500">
-              No meals planned this week.
+              Nothing on the shopping list yet.
             </p>
           )}
 

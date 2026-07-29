@@ -1,10 +1,12 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import NavBar from '../../../components/NavBar'
 import ParentBackButton from '../../../components/ParentBackButton'
 import ParentGate from '../../../components/ParentGate'
+import { useHousehold } from '../../../components/AuthProvider'
 import { supabase } from '../../../lib/supabaseClient'
+import { joinMealsToPlan } from '../../../lib/mealPlan'
 import {
   categoriseIngredient,
   parseIngredientList,
@@ -14,19 +16,13 @@ import {
 type MealPlanItem = {
   id: string
   day_of_week: number
+  meal_id: string | null
   notes: string | null
-  meals:
-    | {
-        id: string
-        title: string
-        ingredients: string | null
-      }
-    | {
-        id: string
-        title: string
-        ingredients: string | null
-      }[]
-    | null
+  meals: {
+    id: string
+    title: string
+    ingredients: string | null
+  } | null
 }
 
 type ShoppingItem = {
@@ -55,40 +51,48 @@ const days: Record<number, string> = {
 }
 
 export default function ParentShoppingPage() {
+  const { householdId } = useHousehold()
   const [mealPlan, setMealPlan] = useState<MealPlanItem[]>([])
   const [manualItems, setManualItems] = useState<ShoppingItem[]>([])
   const [newItem, setNewItem] = useState('')
   const [loading, setLoading] = useState(true)
+  const [addingItem, setAddingItem] = useState(false)
   const [status, setStatus] = useState('')
 
-  async function loadShoppingList() {
+  const loadShoppingList = useCallback(async () => {
+    if (!householdId) {
+      setLoading(false)
+      return
+    }
+
     setLoading(true)
 
     const { data: planData, error: planError } = await supabase
       .from('meal_plan')
-      .select(`
-        id,
-        day_of_week,
-        notes,
-        meals (
-          id,
-          title,
-          ingredients
-        )
-      `)
+      .select('id, day_of_week, meal_id, notes')
+      .eq('household_id', householdId)
       .eq('active', true)
       .order('day_of_week', { ascending: true })
+
+    const { data: mealsData, error: mealsError } = await supabase
+      .from('meals')
+      .select('id, title, ingredients')
+      .eq('household_id', householdId)
 
     const { data: itemsData, error: itemsError } = await supabase
       .from('shopping_items')
       .select('id, category, item, completed')
+      .eq('household_id', householdId)
       .order('created_at', { ascending: true })
 
-    if (planError) {
+    if (planError || mealsError) {
       console.error('Load shopping list error:', planError)
+      if (mealsError) console.error('Load meals error:', mealsError)
       setMealPlan([])
     } else {
-      setMealPlan((planData as MealPlanItem[]) || [])
+      setMealPlan(
+        joinMealsToPlan(planData || [], mealsData || []) as MealPlanItem[]
+      )
     }
 
     if (itemsError) {
@@ -99,15 +103,14 @@ export default function ParentShoppingPage() {
     }
 
     setLoading(false)
-  }
+  }, [householdId])
 
   useEffect(() => {
     loadShoppingList()
-  }, [])
+  }, [loadShoppingList])
 
   function getMeal(item: MealPlanItem) {
-    if (!item.meals) return null
-    return Array.isArray(item.meals) ? item.meals[0] : item.meals
+    return item.meals
   }
 
   function parseIngredients(ingredients: string | null): ParsedIngredient[] {
@@ -115,6 +118,19 @@ export default function ParentShoppingPage() {
       ...ingredient,
       source: 'meal' as const,
     }))
+  }
+
+  function handleShoppingMutationError(
+    error: { code?: string },
+    fallbackMessage: string
+  ) {
+    if (error.code === '42501') {
+      window.dispatchEvent(new Event('parent-zone-expired'))
+      setStatus('Parent Zone timed out. Enter your PIN and try again.')
+      return
+    }
+
+    setStatus(fallbackMessage)
   }
 
   const mealIngredients = mealPlan.flatMap((item) => {
@@ -130,7 +146,7 @@ export default function ParentShoppingPage() {
     completed: item.completed,
   }))
 
-  const allShoppingItems = [...mealIngredients, ...manualIngredients]
+  const allShoppingItems = [...manualIngredients, ...mealIngredients]
 
   const uniqueShoppingItems = allShoppingItems.filter(
     (ingredient, index, array) =>
@@ -161,20 +177,35 @@ export default function ParentShoppingPage() {
       return
     }
 
-    const { error } = await supabase.from('shopping_items').insert({
-      category: categoriseIngredient(cleanItem),
-      item: cleanItem,
-      completed: false,
-    })
-
-    if (error) {
-      console.error('Add shopping item error:', error)
-      setStatus('Could not add item')
+    if (!householdId) {
+      setStatus('Could not identify your household')
       return
     }
 
+    setAddingItem(true)
+
+    const { data, error } = await supabase
+      .from('shopping_items')
+      .insert({
+        household_id: householdId,
+        category: categoriseIngredient(cleanItem),
+        item: cleanItem,
+        completed: false,
+      })
+      .select('id, category, item, completed')
+      .single()
+
+    if (error) {
+      console.error('Add shopping item error:', error)
+      handleShoppingMutationError(error, 'Could not add item')
+      setAddingItem(false)
+      return
+    }
+
+    setManualItems((current) => [...current, data as ShoppingItem])
     setNewItem('')
     setStatus('Item added')
+    setAddingItem(false)
     await loadShoppingList()
   }
 
@@ -183,10 +214,11 @@ export default function ParentShoppingPage() {
       .from('shopping_items')
       .update({ completed: !completed })
       .eq('id', itemId)
+      .eq('household_id', householdId)
 
     if (error) {
       console.error('Toggle shopping item error:', error)
-      setStatus('Could not update item')
+      handleShoppingMutationError(error, 'Could not update item')
       return
     }
 
@@ -198,10 +230,11 @@ export default function ParentShoppingPage() {
       .from('shopping_items')
       .delete()
       .eq('id', itemId)
+      .eq('household_id', householdId)
 
     if (error) {
       console.error('Delete shopping item error:', error)
-      setStatus('Could not delete item')
+      handleShoppingMutationError(error, 'Could not delete item')
       return
     }
 
@@ -213,11 +246,12 @@ export default function ParentShoppingPage() {
     const { error } = await supabase
       .from('shopping_items')
       .delete()
+      .eq('household_id', householdId)
       .eq('completed', true)
 
     if (error) {
       console.error('Clear completed shopping items error:', error)
-      setStatus('Could not clear completed items')
+      handleShoppingMutationError(error, 'Could not clear completed items')
       return
     }
 
@@ -267,9 +301,10 @@ export default function ParentShoppingPage() {
 
               <button
                 onClick={addManualItem}
-                className="rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700"
+                disabled={addingItem}
+                className="rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700 disabled:cursor-wait disabled:opacity-60"
               >
-                Add item
+                {addingItem ? 'Adding...' : 'Add item'}
               </button>
             </div>
 

@@ -33,7 +33,6 @@ type FamilyMember = {
   id: string
   name: string
   role: string | null
-  age: number | null
   avatar_emoji: string | null
   favourite_colour: string | null
   pet_type: 'dog' | 'cat' | 'other' | null
@@ -44,14 +43,13 @@ export default function ParentFamilyPage() {
   const [newName, setNewName] = useState('')
   const [newEmoji, setNewEmoji] = useState('🙂')
   const [newRole, setNewRole] = useState('child')
-  const [newAge, setNewAge] = useState('')
-  const [newPetType, setNewPetType] = useState<'dog' | 'cat' | 'other'>('dog')
+  const [newPetIsDog, setNewPetIsDog] = useState(false)
   const [status, setStatus] = useState('')
 
   async function loadFamilyMembers() {
     const { data, error } = await supabase
       .from('family_members')
-      .select('id, name, role, age, avatar_emoji, favourite_colour, pet_type')
+      .select('id, name, role, avatar_emoji, favourite_colour, pet_type')
       .order('display_order')
 
     if (error) {
@@ -77,8 +75,7 @@ export default function ParentFamilyPage() {
         name: trimmedName,
         avatar_emoji: newEmoji.trim() || '🙂',
         role: newRole,
-        pet_type: newRole === 'pet' ? newPetType : null,
-        age: newAge ? Number(newAge) : null,
+        pet_type: newRole === 'pet' ? (newPetIsDog ? 'dog' : 'other') : null,
       })
 
     if (error) {
@@ -90,8 +87,7 @@ export default function ParentFamilyPage() {
     setNewName('')
     setNewEmoji('🙂')
     setNewRole('child')
-    setNewAge('')
-    setNewPetType('dog')
+    setNewPetIsDog(false)
     setStatus('Family member added')
     await loadFamilyMembers()
   }
@@ -142,7 +138,7 @@ export default function ParentFamilyPage() {
               Add Family Member
             </h2>
 
-            <div className="grid gap-4 md:grid-cols-[1fr_100px_140px_120px]">
+            <div className="grid gap-4 md:grid-cols-[1fr_100px_140px]">
               <input
                 value={newName}
                 onChange={(event) => setNewName(event.target.value)}
@@ -168,7 +164,8 @@ export default function ParentFamilyPage() {
                   const role = event.target.value
                   setNewRole(role)
                   if (role === 'pet') {
-                    setNewEmoji('🐶')
+                    setNewPetIsDog(false)
+                    setNewEmoji('🐾')
                   }
                 }}
                 className="rounded-2xl border border-slate-200 p-4"
@@ -178,31 +175,27 @@ export default function ParentFamilyPage() {
                 <option value="pet">Pet</option>
               </select>
 
-              <input
-                type="number"
-                value={newAge}
-                onChange={(event) => setNewAge(event.target.value)}
-                className="rounded-2xl border border-slate-200 p-4"
-                placeholder="Age"
-              />
             </div>
 
             {newRole === 'pet' && (
-              <select
-                value={newPetType}
+              <label className="mt-4 flex cursor-pointer items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <input
+                  type="checkbox"
+                  checked={newPetIsDog}
                 onChange={(event) => {
-                  const petType = event.target.value as 'dog' | 'cat' | 'other'
-                  setNewPetType(petType)
-                  setNewEmoji(
-                    petType === 'dog' ? '🐶' : petType === 'cat' ? '🐱' : '🐾'
-                  )
+                    const isDog = event.target.checked
+                    setNewPetIsDog(isDog)
+                    setNewEmoji(isDog ? '🐶' : '🐾')
                 }}
-                className="mt-4 rounded-2xl border border-slate-200 p-4"
-              >
-                <option value="dog">Dog</option>
-                <option value="cat">Cat</option>
-                <option value="other">Other pet</option>
-              </select>
+                  className="h-5 w-5 rounded border-slate-300 accent-blue-600"
+                />
+                <span>
+                  <span className="block font-semibold">This pet is a dog</span>
+                  <span className="block text-sm text-slate-500">
+                    Used to show dog-walk suggestions on the dashboard.
+                  </span>
+                </span>
+              </label>
             )}
 
             <button
@@ -222,7 +215,7 @@ export default function ParentFamilyPage() {
               {familyMembers.map((member) => (
                 <div
                   key={member.id}
-                  className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-[1fr_100px_140px_120px]"
+                  className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-[1fr_100px_140px]"
                 >
                   <input
                     value={member.name}
@@ -257,7 +250,7 @@ export default function ParentFamilyPage() {
                         role: event.target.value,
                         pet_type:
                           event.target.value === 'pet'
-                            ? member.pet_type || 'dog'
+                            ? member.pet_type || 'other'
                             : null,
                       })
                     }
@@ -269,37 +262,22 @@ export default function ParentFamilyPage() {
                   </select>
 
                   {member.role === 'pet' && (
-                    <select
-                      value={member.pet_type || 'other'}
+                    <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 md:col-start-3">
+                      <input
+                        type="checkbox"
+                        checked={member.pet_type === 'dog'}
                       onChange={(event) =>
                         updateFamilyMember(member.id, {
-                          pet_type: event.target.value as
-                            | 'dog'
-                            | 'cat'
-                            | 'other',
+                            pet_type: event.target.checked ? 'dog' : 'other',
                         })
                       }
-                      className="rounded-xl border border-slate-200 bg-white p-3 md:col-start-3"
-                    >
-                      <option value="dog">Dog</option>
-                      <option value="cat">Cat</option>
-                      <option value="other">Other pet</option>
-                    </select>
+                        className="h-5 w-5 rounded border-slate-300 accent-blue-600"
+                      />
+                      <span className="text-sm font-medium">
+                        This pet is a dog
+                      </span>
+                    </label>
                   )}
-
-                  <input
-                    type="number"
-                    value={member.age ?? ''}
-                    onChange={(event) =>
-                      updateFamilyMember(member.id, {
-                        age: event.target.value
-                          ? Number(event.target.value)
-                          : null,
-                      })
-                    }
-                    className="rounded-xl border border-slate-200 bg-white p-3"
-                    placeholder="Age"
-                  />
                 </div>
               ))}
             </div>

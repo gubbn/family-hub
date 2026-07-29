@@ -1,8 +1,10 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabaseClient'
 import NavBar from '../../components/NavBar'
+import { useHousehold } from '../../components/AuthProvider'
+import { joinMealsToPlan } from '../../lib/mealPlan'
 
 type WeeklyEvent = {
   id: string
@@ -16,8 +18,9 @@ type WeeklyEvent = {
 
 type MealPlanItem = {
   day_of_week: number
+  meal_id: string | null
   notes: string | null
-  meals: { title: string } | { title: string }[] | null
+  meals: { id: string; title: string } | null
 }
 
 const days = [
@@ -32,41 +35,49 @@ const days = [
 ]
 
 export default function SchedulePage() {
+  const { householdId } = useHousehold()
   const [events, setEvents] = useState<WeeklyEvent[]>([])
   const [mealPlan, setMealPlan] = useState<MealPlanItem[]>([])
   const [loading, setLoading] = useState(true)
 
-  async function loadScheduleData() {
+  const loadScheduleData = useCallback(async () => {
+    if (!householdId) return
+
     setLoading(true)
 
     const { data: eventsData, error: eventsError } = await supabase
       .from('weekly_events')
       .select('*')
+      .eq('household_id', householdId)
       .eq('active', true)
       .order('day_of_week')
       .order('start_time')
 
-    const { data: mealData, error: mealError } = await supabase
+    const { data: planData, error: planError } = await supabase
       .from('meal_plan')
-      .select(`
-        day_of_week,
-        notes,
-        meals (
-          title
-        )
-      `)
+      .select('day_of_week, meal_id, notes')
+      .eq('household_id', householdId)
+      .eq('active', true)
+
+    const { data: mealsData, error: mealsError } = await supabase
+      .from('meals')
+      .select('id, title')
+      .eq('household_id', householdId)
 
     if (eventsError) console.error('Load events error:', eventsError)
-    if (mealError) console.error('Load meal plan error:', mealError)
+    if (planError) console.error('Load meal plan error:', planError)
+    if (mealsError) console.error('Load meals error:', mealsError)
 
     setEvents(eventsData || [])
-    setMealPlan(mealData || [])
+    setMealPlan(
+      joinMealsToPlan(planData || [], mealsData || []) as MealPlanItem[]
+    )
     setLoading(false)
-  }
+  }, [householdId])
 
   useEffect(() => {
     loadScheduleData()
-  }, [])
+  }, [loadScheduleData])
 
   const groupedEvents = useMemo(() => {
     const grouped: Record<number, WeeklyEvent[]> = {}
@@ -94,9 +105,7 @@ export default function SchedulePage() {
 
     if (!plan?.meals) return null
 
-    const mealTitle = Array.isArray(plan.meals)
-      ? plan.meals[0]?.title
-      : plan.meals.title
+    const mealTitle = plan.meals.title
 
     if (!mealTitle) return null
 

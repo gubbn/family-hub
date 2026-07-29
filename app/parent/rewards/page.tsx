@@ -19,7 +19,9 @@ type Reward = {
 type RewardRequest = {
   id: string
   points_cost: number
+  status: 'pending' | 'approved' | 'declined'
   requested_at: string
+  reviewed_at: string | null
   rewards: { name: string; emoji: string } | { name: string; emoji: string }[]
   family_members:
     | { name: string; avatar_emoji: string | null }
@@ -30,6 +32,7 @@ export default function ParentRewardsPage() {
   const { householdId } = useHousehold()
   const [rewards, setRewards] = useState<Reward[]>([])
   const [requests, setRequests] = useState<RewardRequest[]>([])
+  const [redemptions, setRedemptions] = useState<RewardRequest[]>([])
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [emoji, setEmoji] = useState('🎁')
@@ -38,31 +41,53 @@ export default function ParentRewardsPage() {
   const [loading, setLoading] = useState(true)
 
   const loadData = useCallback(async () => {
-    const [rewardsResult, requestsResult] = await Promise.all([
+    const [rewardsResult, requestsResult, redemptionsResult] = await Promise.all([
       supabase
         .from('rewards')
         .select('id, name, description, emoji, points_cost, active')
+        .eq('household_id', householdId)
         .order('points_cost'),
       supabase
         .from('reward_requests')
         .select(`
           id,
           points_cost,
+          status,
           requested_at,
-          rewards (name, emoji),
-          family_members (name, avatar_emoji)
+          reviewed_at,
+          rewards!reward_requests_reward_household_fkey (name, emoji),
+          family_members!reward_requests_member_household_fkey (name, avatar_emoji)
         `)
+        .eq('household_id', householdId)
         .eq('status', 'pending')
         .order('requested_at'),
+      supabase
+        .from('reward_requests')
+        .select(`
+          id,
+          points_cost,
+          status,
+          requested_at,
+          reviewed_at,
+          rewards!reward_requests_reward_household_fkey (name, emoji),
+          family_members!reward_requests_member_household_fkey (name, avatar_emoji)
+        `)
+        .eq('household_id', householdId)
+        .eq('status', 'approved')
+        .order('reviewed_at', { ascending: false }),
     ])
 
     if (rewardsResult.error) console.error('Load parent rewards:', rewardsResult.error)
     if (requestsResult.error) console.error('Load reward requests:', requestsResult.error)
+    if (redemptionsResult.error) {
+      console.error('Load reward redemption history:', redemptionsResult.error)
+    }
 
     setRewards((rewardsResult.data || []) as Reward[])
     setRequests((requestsResult.data || []) as RewardRequest[])
+    setRedemptions((redemptionsResult.data || []) as RewardRequest[])
     setLoading(false)
-  }, [])
+  }, [householdId])
 
   useEffect(() => {
     void loadData()
@@ -259,6 +284,57 @@ export default function ParentRewardsPage() {
                   </div>
                 ))}
               </div>
+            </section>
+
+            <section className="rounded-3xl bg-white p-6 shadow-sm">
+              <h2 className="text-2xl font-semibold">Redemption history</h2>
+              <p className="mt-2 text-slate-600">
+                A permanent record of rewards approved and points spent.
+              </p>
+
+              {loading ? (
+                <p className="mt-4 text-slate-500">Loading history...</p>
+              ) : redemptions.length === 0 ? (
+                <p className="mt-4 text-slate-500">
+                  No rewards have been redeemed yet.
+                </p>
+              ) : (
+                <div className="mt-5 divide-y divide-slate-200">
+                  {redemptions.map((redemption) => {
+                    const reward = Array.isArray(redemption.rewards)
+                      ? redemption.rewards[0]
+                      : redemption.rewards
+                    const member = Array.isArray(redemption.family_members)
+                      ? redemption.family_members[0]
+                      : redemption.family_members
+                    const redeemedAt =
+                      redemption.reviewed_at || redemption.requested_at
+
+                    return (
+                      <div
+                        key={redemption.id}
+                        className="flex flex-wrap items-center justify-between gap-3 py-4"
+                      >
+                        <div>
+                          <p className="font-semibold">
+                            {member?.avatar_emoji || '🙂'} {member?.name}{' '}
+                            redeemed {reward?.emoji || '🎁'} {reward?.name}
+                          </p>
+                          <p className="mt-1 text-sm text-slate-500">
+                            {new Intl.DateTimeFormat('en-GB', {
+                              dateStyle: 'medium',
+                              timeStyle: 'short',
+                            }).format(new Date(redeemedAt))}
+                          </p>
+                        </div>
+                        <p className="font-semibold text-purple-700">
+                          {redemption.points_cost} points
+                        </p>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
             </section>
           </div>
         </ParentGate>

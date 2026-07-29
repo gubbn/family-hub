@@ -1,8 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabaseClient'
 import NavBar from '../../components/NavBar'
+import { useHousehold } from '../../components/AuthProvider'
+import { joinMealsToPlan } from '../../lib/mealPlan'
 
 type FamilyMember = {
   id: string
@@ -13,19 +15,9 @@ type FamilyMember = {
 type MenuMeal = {
   id: string
   day_of_week: number
+  meal_id: string | null
   notes: string | null
-  meals:
-    | {
-        id: string
-        title: string
-        staple?: string | null
-      }
-    | {
-        id: string
-        title: string
-        staple?: string | null
-      }[]
-    | null
+  meals: Meal | null
 }
 
 type MealRating = {
@@ -51,6 +43,7 @@ const dayNames: Record<number, string> = {
 }
 
 export default function MealsPage() {
+  const { householdId } = useHousehold()
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([])
   const [selectedMember, setSelectedMember] = useState('')
   const [menuMeals, setMenuMeals] = useState<MenuMeal[]>([])
@@ -59,43 +52,51 @@ export default function MealsPage() {
   const [loading, setLoading] = useState(true)
   const [allMeals, setAllMeals] = useState<Meal[]>([])
 
-  async function loadData() {
+  const loadData = useCallback(async () => {
+    if (!householdId) return
+
     setLoading(true)
 
     try {
-      const { data: membersData } = await supabase
-        .from('family_members')
-        .select('id, name, avatar_emoji')
-        .order('display_order')
-
-      const { data: menuData } = await supabase
-        .from('meal_plan')
-        .select(`
-          id,
-          day_of_week,
-          notes,
-          meals (
-            id,
-            title,
-            staple
-          )
-        `)
-        .eq('active', true)
-        .order('day_of_week', { ascending: true })
-
-      const { data: ratingsData } = await supabase
-        .from('meal_ratings')
-        .select('meal_id, family_member_id, rating')
+      const [
+        { data: membersData, error: membersError },
+        { data: planData, error: planError },
+        { data: ratingsData, error: ratingsError },
+        { data: allMealsData, error: mealsError },
+      ] = await Promise.all([
+        supabase
+          .from('family_members')
+          .select('id, name, avatar_emoji')
+          .eq('household_id', householdId)
+          .order('display_order'),
+        supabase
+          .from('meal_plan')
+          .select('id, day_of_week, meal_id, notes')
+          .eq('household_id', householdId)
+          .eq('active', true)
+          .order('day_of_week', { ascending: true }),
+        supabase
+          .from('meal_ratings')
+          .select('meal_id, family_member_id, rating')
+          .eq('household_id', householdId),
+        supabase
+          .from('meals')
+          .select('id, title, staple')
+          .eq('household_id', householdId),
+      ])
 
       const safeMembers = membersData || []
 
-      const { data: allMealsData } = await supabase
-  .from('meals')
-  .select('id, title, staple')
+      if (membersError) console.error('Load meal members error:', membersError)
+      if (planError) console.error('Load meal plan error:', planError)
+      if (ratingsError) console.error('Load meal ratings error:', ratingsError)
+      if (mealsError) console.error('Load meal library error:', mealsError)
 
       setFamilyMembers(safeMembers)
       setSelectedMember((current) => current || safeMembers[0]?.id || '')
-      setMenuMeals((menuData as MenuMeal[]) || [])
+      setMenuMeals(
+        joinMealsToPlan(planData || [], allMealsData || []) as MenuMeal[]
+      )
       setRatings((ratingsData as MealRating[]) || [])
       setAllMeals((allMealsData as Meal[]) || [])
     } catch (error) {
@@ -103,15 +104,14 @@ export default function MealsPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [householdId])
 
   useEffect(() => {
     loadData()
-  }, [])
+  }, [loadData])
 
   function getMealFromPlan(item: MenuMeal) {
-    if (!item.meals) return null
-    return Array.isArray(item.meals) ? item.meals[0] : item.meals
+    return item.meals
   }
 
   async function rateMeal(mealId: string, rating: number) {
@@ -123,6 +123,7 @@ export default function MealsPage() {
         {
           meal_id: mealId,
           family_member_id: selectedMember,
+          household_id: householdId,
           rating,
           updated_at: new Date().toISOString(),
         },

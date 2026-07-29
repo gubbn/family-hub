@@ -15,10 +15,10 @@ const parentCards = [
   description: 'Build a shopping list from this week’s meal plan.',
   href: '/parent/shopping',
   emoji: '🛒',
-},
+  },
   {
-    title: 'Schedule',
-    description: 'Add and manage weekly events.',
+    title: 'Our Week',
+    description: 'Add and manage each day of the family week.',
     href: '/parent/schedule',
     emoji: '📅',
   },

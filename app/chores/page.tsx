@@ -75,7 +75,7 @@ export default function ChoresPage() {
         supabase
           .from('chore_assignments')
           .select(`
-            chores (
+            chores!chore_assignments_chore_household_fkey (
               id,
               title,
               points,

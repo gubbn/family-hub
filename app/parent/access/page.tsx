@@ -58,8 +58,34 @@ export default function ParentAccessPage() {
   }
 
   async function copyInvite() {
-    await navigator.clipboard.writeText(inviteCode)
-    setStatus('Invitation code copied.')
+    if (!inviteCode) return
+
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(inviteCode)
+      } else {
+        const textArea = document.createElement('textarea')
+        textArea.value = inviteCode
+        textArea.setAttribute('readonly', '')
+        textArea.style.position = 'fixed'
+        textArea.style.opacity = '0'
+        document.body.appendChild(textArea)
+        textArea.select()
+
+        const copied = document.execCommand('copy')
+        document.body.removeChild(textArea)
+
+        if (!copied) {
+          throw new Error('The browser blocked clipboard access')
+        }
+      }
+
+      setStatus('Invitation code copied.')
+    } catch (error) {
+      console.error('Copy invitation code error:', error)
+      window.prompt('Copy this invitation code:', inviteCode)
+      setStatus('The code is ready to copy from the box shown.')
+    }
   }
 
   async function removeParent(parent: ParentMembership) {
@@ -117,7 +143,7 @@ export default function ParentAccessPage() {
                   </p>
                   <button
                     type="button"
-                    onClick={copyInvite}
+                    onClick={() => void copyInvite()}
                     className="mt-4 rounded-xl bg-white px-4 py-2 font-medium shadow-sm"
                   >
                     Copy code

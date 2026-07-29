@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { updateCompletionStreak } from '@/lib/streaks'
+import { useHousehold } from './AuthProvider'
 
 type Props = {
   selectedMember: string
@@ -10,6 +11,7 @@ type Props = {
 }
 
 type RoutineInfo = {
+  id: string
   title: string
   time_of_day: string
 }
@@ -34,48 +36,68 @@ type Streak = {
 }
 
 export default function RoutineSection({ selectedMember, resetKey = 0 }: Props) {
+  const { householdId } = useHousehold()
   const [steps, setSteps] = useState<RoutineStep[]>([])
   const [completed, setCompleted] = useState<string[]>([])
   const [streaks, setStreaks] = useState<Record<string, Streak>>({})
   const [loading, setLoading] = useState(false)
+  const [loadError, setLoadError] = useState('')
 
   const loadRoutineData = useCallback(async () => {
-    if (!selectedMember) return
+    if (!selectedMember || !householdId) return
 
     setLoading(true)
+    setLoadError('')
 
     try {
       const today = new Date().toISOString().split('T')[0]
 
-      const { data: stepData, error: stepError } = await supabase
-        .from('routine_steps')
-        .select(`
-          id,
-          routine_id,
-          title,
-          step_order,
-          routines (
-            title,
-            time_of_day
-          )
-        `)
-        .order('step_order')
+      const [
+        { data: routineData, error: routineError },
+        { data: stepData, error: stepError },
+        { data: completionData, error: completionError },
+        { data: streakData, error: streakError },
+      ] = await Promise.all([
+        supabase
+          .from('routines')
+          .select('id, title, time_of_day')
+          .eq('household_id', householdId),
+        supabase
+          .from('routine_steps')
+          .select('id, routine_id, title, step_order')
+          .eq('household_id', householdId)
+          .order('step_order'),
+        supabase
+          .from('routine_step_completions')
+          .select('routine_step_id, family_member_id')
+          .eq('household_id', householdId)
+          .eq('family_member_id', selectedMember)
+          .gte('completed_at', today),
+        supabase
+          .from('completion_streaks')
+          .select('item_id, streak_count, best_streak')
+          .eq('household_id', householdId)
+          .eq('member_id', selectedMember)
+          .eq('item_type', 'routine_step'),
+      ])
 
-      const { data: completionData, error: completionError } = await supabase
-        .from('routine_step_completions')
-        .select('routine_step_id, family_member_id')
-        .eq('family_member_id', selectedMember)
-        .gte('completed_at', today)
-
-      const { data: streakData, error: streakError } = await supabase
-        .from('completion_streaks')
-        .select('item_id, streak_count, best_streak')
-        .eq('member_id', selectedMember)
-        .eq('item_type', 'routine_step')
-
+      if (routineError) console.error('Routines error:', routineError)
       if (stepError) console.error('Routine steps error:', stepError)
       if (completionError) console.error('Routine completions error:', completionError)
       if (streakError) console.error('Routine streaks error:', streakError)
+
+      if (routineError || stepError) {
+        setSteps([])
+        setLoadError('Could not load routine steps. Please try again.')
+        return
+      }
+
+      const routinesById = new Map(
+        ((routineData as RoutineInfo[]) || []).map((routine) => [
+          routine.id,
+          routine,
+        ])
+      )
 
       const safeSteps: RoutineStep[] =
         stepData?.map((step) => ({
@@ -83,7 +105,7 @@ export default function RoutineSection({ selectedMember, resetKey = 0 }: Props) 
           routine_id: step.routine_id,
           title: step.title,
           step_order: step.step_order,
-          routines: step.routines,
+          routines: routinesById.get(step.routine_id) || null,
         })) || []
 
       const safeCompleted =
@@ -106,7 +128,7 @@ export default function RoutineSection({ selectedMember, resetKey = 0 }: Props) 
     } finally {
       setLoading(false)
     }
-  }, [selectedMember])
+  }, [householdId, selectedMember])
 
   async function toggleRoutineStep(stepId: string) {
     if (!selectedMember) return
@@ -191,7 +213,7 @@ export default function RoutineSection({ selectedMember, resetKey = 0 }: Props) 
 
       {!loading && steps.length === 0 && (
         <p className="text-slate-500">
-          No routine steps found
+          {loadError || 'No routine steps found'}
         </p>
       )}
 

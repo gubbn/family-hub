@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../../../lib/supabaseClient'
 import NavBar from '../../../components/NavBar'
 import ParentGate from '../../../components/ParentGate'
 import ParentBackButton from '../../../components/ParentBackButton'
+import { useHousehold } from '../../../components/AuthProvider'
 
 type Routine = {
   id: string
@@ -17,12 +18,12 @@ type RoutineStep = {
   routine_id: string
   title: string
   step_order: number
-  routines: { title: string } | { title: string }[] | null
 }
 
 const routineOrder = ['morning', 'afternoon', 'evening']
 
 export default function ParentRoutinesPage() {
+  const { householdId } = useHousehold()
   const [routines, setRoutines] = useState<Routine[]>([])
   const [steps, setSteps] = useState<RoutineStep[]>([])
   const [selectedRoutine, setSelectedRoutine] = useState('')
@@ -30,22 +31,18 @@ export default function ParentRoutinesPage() {
   const [newStepOrder, setNewStepOrder] = useState('1')
   const [status, setStatus] = useState('')
 
-  async function loadData() {
+  const loadData = useCallback(async () => {
+    if (!householdId) return
+
     const { data: routinesData, error: routinesError } = await supabase
       .from('routines')
       .select('id, title, time_of_day')
+      .eq('household_id', householdId)
 
     const { data: stepsData, error: stepsError } = await supabase
       .from('routine_steps')
-      .select(`
-        id,
-        routine_id,
-        title,
-        step_order,
-        routines (
-          title
-        )
-      `)
+      .select('id, routine_id, title, step_order')
+      .eq('household_id', householdId)
       .order('step_order')
 
     if (routinesError) {
@@ -68,7 +65,7 @@ export default function ParentRoutinesPage() {
     setRoutines(safeRoutines)
     setSteps((stepsData as RoutineStep[]) || [])
     setSelectedRoutine((current) => current || safeRoutines[0]?.id || '')
-  }
+  }, [householdId])
 
   async function addRoutineStep() {
     const trimmedTitle = newStepTitle.trim()
@@ -86,6 +83,7 @@ export default function ParentRoutinesPage() {
     const { error } = await supabase
       .from('routine_steps')
       .insert({
+        household_id: householdId,
         routine_id: selectedRoutine,
         title: trimmedTitle,
         step_order: Number(newStepOrder) || 1,
@@ -111,6 +109,7 @@ export default function ParentRoutinesPage() {
       .from('routine_steps')
       .update(updates)
       .eq('id', stepId)
+      .eq('household_id', householdId)
 
     if (error) {
       console.error('Update routine step error:', error)
@@ -135,11 +134,13 @@ export default function ParentRoutinesPage() {
       .from('routine_steps')
       .update({ step_order: swapWithStep.step_order })
       .eq('id', currentStep.id)
+      .eq('household_id', householdId)
 
     const { error: secondError } = await supabase
       .from('routine_steps')
       .update({ step_order: currentStep.step_order })
       .eq('id', swapWithStep.id)
+      .eq('household_id', householdId)
 
     if (firstError || secondError) {
       console.error('Move routine step error:', firstError || secondError)
@@ -156,6 +157,7 @@ export default function ParentRoutinesPage() {
       .from('routine_steps')
       .delete()
       .eq('id', stepId)
+      .eq('household_id', householdId)
 
     if (error) {
       console.error('Delete routine step error:', error)
@@ -169,7 +171,7 @@ export default function ParentRoutinesPage() {
 
   useEffect(() => {
     loadData()
-  }, [])
+  }, [loadData])
 
   return (
     <main className="min-h-screen bg-slate-100 p-6 text-slate-900">

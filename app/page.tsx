@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import NavBar from '../components/NavBar'
 import WeatherCard from '../components/WeatherCard'
@@ -8,11 +8,13 @@ import DogWalkSuggestion from '../components/DogWalkSuggestion'
 import { useHousehold } from '../components/AuthProvider'
 import { supabase } from '../lib/supabaseClient'
 import { calculatePointBalances } from '../lib/points'
+import { joinMealsToPlan } from '../lib/mealPlan'
 
 type MealPlanItem = {
   day_of_week: number
+  meal_id: string | null
   notes: string | null
-  meals: { title: string } | { title: string }[] | null
+  meals: { id: string; title: string } | null
 }
 
 type Completion = {
@@ -95,7 +97,7 @@ function formatNames(names: string[]) {
 }
 
 export default function Home() {
-  const { householdName } = useHousehold()
+  const { householdId, householdName } = useHousehold()
   const [mealPlan, setMealPlan] = useState<MealPlanItem[]>([])
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([])
   const [points, setPoints] = useState<Record<string, number>>({})
@@ -111,22 +113,29 @@ export default function Home() {
     return jsDay === 0 ? 7 : jsDay
   }, [])
 
-  async function loadDashboardData() {
+  const loadDashboardData = useCallback(async () => {
+    if (!householdId) {
+      setLoading(false)
+      return
+    }
+
     setLoading(true)
 
-    const { data: mealData, error: mealError } = await supabase
+    const { data: planData, error: planError } = await supabase
       .from('meal_plan')
-      .select(`
-        day_of_week,
-        notes,
-        meals (
-          title
-        )
-      `)
+      .select('day_of_week, meal_id, notes')
+      .eq('household_id', householdId)
+      .eq('active', true)
+
+    const { data: mealsData, error: mealsError } = await supabase
+      .from('meals')
+      .select('id, title')
+      .eq('household_id', householdId)
 
     const { data: membersData, error: membersError } = await supabase
       .from('family_members')
       .select('id, name, avatar_emoji, role, pet_type')
+      .eq('household_id', householdId)
       .order('display_order')
 
     const { data: completedData, error: completedError } = await supabase
@@ -137,13 +146,14 @@ export default function Home() {
         completed_at,
         points_awarded
       `)
+      .eq('household_id', householdId)
 
     const { data: assignmentData, error: assignmentError } = await supabase
       .from('chore_assignments')
       .select(`
         chore_id,
         family_member_id,
-        chores (
+        chores!chore_assignments_chore_household_fkey (
           id,
           title,
           points,
@@ -151,10 +161,12 @@ export default function Home() {
           shared_completion
         )
       `)
+      .eq('household_id', householdId)
 
     const { data: eventsData, error: eventsError } = await supabase
       .from('weekly_events')
       .select('*')
+      .eq('household_id', householdId)
       .eq('active', true)
       .order('day_of_week')
       .order('start_time')
@@ -162,15 +174,18 @@ export default function Home() {
     const { data: streakData, error: streakError } = await supabase
       .from('completion_streaks')
       .select('member_id, item_id, streak_count')
+      .eq('household_id', householdId)
       .eq('item_type', 'routine_step')
       .gt('streak_count', 0)
 
     const { data: spendingData, error: spendingError } = await supabase
       .from('reward_requests')
       .select('family_member_id, points_cost')
+      .eq('household_id', householdId)
       .eq('status', 'approved')
 
-    if (mealError) console.error('Meal plan error:', mealError)
+    if (planError) console.error('Meal plan error:', planError)
+    if (mealsError) console.error('Meals error:', mealsError)
     if (membersError) console.error('Members error:', membersError)
     if (completedError) console.error('Completed chores error:', completedError)
     if (assignmentError) console.error('Chore assignments error:', assignmentError)
@@ -178,7 +193,9 @@ export default function Home() {
     if (streakError) console.error('Routine streaks error:', streakError)
     if (spendingError) console.error('Reward spending error:', spendingError)
 
-    setMealPlan((mealData as MealPlanItem[]) || [])
+    setMealPlan(
+      joinMealsToPlan(planData || [], mealsData || []) as MealPlanItem[]
+    )
     const allMembers = (membersData as FamilyMember[]) || []
     setFamilyMembers(allMembers.filter((member) => member.role !== 'pet'))
     setHasDog(
@@ -198,22 +215,18 @@ export default function Home() {
       )
     )
     setLoading(false)
-  }
+  }, [householdId])
 
   useEffect(() => {
     loadDashboardData()
-  }, [])
+  }, [loadDashboardData])
 
   const todaysMeal = useMemo(() => {
     return mealPlan.find((item) => item.day_of_week === todayNumber)
   }, [mealPlan, todayNumber])
 
   const mealTitle = useMemo(() => {
-    if (!todaysMeal?.meals) return null
-
-    return Array.isArray(todaysMeal.meals)
-      ? todaysMeal.meals[0]?.title
-      : todaysMeal.meals.title
+    return todaysMeal?.meals?.title || null
   }, [todaysMeal])
 
   const currentDate = new Date().toLocaleDateString('en-GB', {
