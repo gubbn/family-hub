@@ -6,6 +6,8 @@ import { supabase } from '../../lib/supabaseClient'
 import { useHousehold } from '../../components/AuthProvider'
 import { joinMealsToPlan } from '../../lib/mealPlan'
 import {
+  countMealsByIngredient,
+  ingredientKey,
   parseIngredientList,
   shoppingCategories,
 } from '../../lib/ingredients'
@@ -88,6 +90,10 @@ export default function ShoppingPage() {
     return item.meals
   }
 
+  const mealCountsByIngredient = countMealsByIngredient(
+    mealPlan.map((item) => getMeal(item)?.ingredients || null)
+  )
+
   const ingredientsByCategory = shoppingCategories
     .map((category) => ({
       category,
@@ -98,18 +104,38 @@ export default function ShoppingPage() {
               (item.category || 'Other').toLowerCase() ===
               category.toLowerCase()
           )
-          .map((item) => item.item),
+          .map((item) => ({
+            item: item.item,
+            mealCount:
+              mealCountsByIngredient.get(
+                ingredientKey({
+                  category,
+                  item: item.item,
+                })
+              ) || 0,
+          })),
         ...mealPlan.flatMap((item) => {
           const meal = getMeal(item)
           return parseIngredientList(meal?.ingredients || null)
             .filter((ingredient) => ingredient.category === category)
-            .map((ingredient) => ingredient.item)
+            .map((ingredient) => ({
+              item: ingredient.item,
+              mealCount:
+                mealCountsByIngredient.get(ingredientKey(ingredient)) || 0,
+            }))
         }),
       ],
     }))
     .map((group) => ({
       ...group,
-      items: [...new Set(group.items)].sort((a, b) => a.localeCompare(b)),
+      items: [
+        ...new Map(
+          group.items.map((ingredient) => [
+            ingredient.item.trim().toLowerCase(),
+            ingredient,
+          ])
+        ).values(),
+      ].sort((a, b) => a.item.localeCompare(b.item)),
     }))
     .filter((group) => group.items.length > 0)
 
@@ -153,7 +179,12 @@ export default function ShoppingPage() {
                   <h3 className="text-xl font-semibold">{group.category}</h3>
                   <ul className="mt-3 list-disc space-y-1 pl-6 text-slate-700">
                     {group.items.map((ingredient) => (
-                      <li key={ingredient}>{ingredient}</li>
+                      <li key={ingredient.item}>
+                        {ingredient.item}
+                        {ingredient.mealCount > 1
+                          ? ` (${ingredient.mealCount} meals)`
+                          : ''}
+                      </li>
                     ))}
                   </ul>
                 </div>

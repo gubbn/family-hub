@@ -9,6 +9,8 @@ import { supabase } from '../../../lib/supabaseClient'
 import { joinMealsToPlan } from '../../../lib/mealPlan'
 import {
   categoriseIngredient,
+  countMealsByIngredient,
+  ingredientKey,
   parseIngredientList,
   shoppingCategories,
 } from '../../../lib/ingredients'
@@ -38,6 +40,7 @@ type ParsedIngredient = {
   source: 'meal' | 'manual'
   id?: string
   completed?: boolean
+  mealCount?: number
 }
 
 const days: Record<number, string> = {
@@ -148,14 +151,26 @@ export default function ParentShoppingPage() {
 
   const allShoppingItems = [...manualIngredients, ...mealIngredients]
 
-  const uniqueShoppingItems = allShoppingItems.filter(
-    (ingredient, index, array) =>
-      array.findIndex(
-        (item) =>
-          item.category.toLowerCase() === ingredient.category.toLowerCase() &&
-          item.item.toLowerCase() === ingredient.item.toLowerCase()
-      ) === index
+  const mealCountsByIngredient = countMealsByIngredient(
+    mealPlan.map((item) => getMeal(item)?.ingredients || null)
   )
+
+  const uniqueShoppingItems = [
+    ...allShoppingItems
+      .reduce((uniqueItems, ingredient) => {
+        const key = ingredientKey(ingredient)
+
+        if (!uniqueItems.has(key)) {
+          uniqueItems.set(key, {
+            ...ingredient,
+            mealCount: mealCountsByIngredient.get(key) || 0,
+          })
+        }
+
+        return uniqueItems
+      }, new Map<string, ParsedIngredient>())
+      .values(),
+  ]
 
   const groupedIngredients = shoppingCategories
     .map((category) => ({
@@ -387,6 +402,9 @@ export default function ParentShoppingPage() {
                                 }
                               >
                                 {ingredient.item}
+                                {(ingredient.mealCount || 0) > 1
+                                  ? ` (${ingredient.mealCount} meals)`
+                                  : ''}
                               </span>
                             </label>
 

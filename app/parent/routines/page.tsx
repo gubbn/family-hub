@@ -27,8 +27,11 @@ export default function ParentRoutinesPage() {
   const [routines, setRoutines] = useState<Routine[]>([])
   const [steps, setSteps] = useState<RoutineStep[]>([])
   const [selectedRoutine, setSelectedRoutine] = useState('')
+  const [newRoutineTitle, setNewRoutineTitle] = useState('')
+  const [newRoutineTime, setNewRoutineTime] = useState('morning')
   const [newStepTitle, setNewStepTitle] = useState('')
   const [newStepOrder, setNewStepOrder] = useState('1')
+  const [addingRoutine, setAddingRoutine] = useState(false)
   const [status, setStatus] = useState('')
 
   const loadData = useCallback(async () => {
@@ -67,8 +70,74 @@ export default function ParentRoutinesPage() {
     setSelectedRoutine((current) => current || safeRoutines[0]?.id || '')
   }, [householdId])
 
+  function handleMutationError(
+    error: { code?: string },
+    fallbackMessage: string
+  ) {
+    if (error.code === '42501') {
+      window.dispatchEvent(new Event('parent-zone-expired'))
+      setStatus('Parent Zone timed out. Enter your PIN and try again.')
+      return
+    }
+
+    setStatus(fallbackMessage)
+  }
+
+  async function addRoutine() {
+    const trimmedTitle = newRoutineTitle.trim()
+
+    if (!householdId) {
+      setStatus('Could not identify your household')
+      return
+    }
+
+    if (!trimmedTitle) {
+      setStatus('Enter a routine name first')
+      return
+    }
+
+    setAddingRoutine(true)
+
+    const { data, error } = await supabase
+      .from('routines')
+      .insert({
+        household_id: householdId,
+        title: trimmedTitle,
+        time_of_day: newRoutineTime,
+        active: true,
+      })
+      .select('id, title, time_of_day')
+      .single()
+
+    if (error) {
+      console.error('Add routine error:', error)
+      handleMutationError(error, 'Could not add routine')
+      setAddingRoutine(false)
+      return
+    }
+
+    const newRoutine = data as Routine
+    setRoutines((current) =>
+      [...current, newRoutine].sort((a, b) => {
+        const aIndex = routineOrder.indexOf(a.time_of_day || '')
+        const bIndex = routineOrder.indexOf(b.time_of_day || '')
+
+        return (aIndex === -1 ? 99 : aIndex) - (bIndex === -1 ? 99 : bIndex)
+      })
+    )
+    setSelectedRoutine(newRoutine.id)
+    setNewRoutineTitle('')
+    setStatus(`${newRoutine.title} added. You can add its first step below.`)
+    setAddingRoutine(false)
+  }
+
   async function addRoutineStep() {
     const trimmedTitle = newStepTitle.trim()
+
+    if (!householdId) {
+      setStatus('Could not identify your household')
+      return
+    }
 
     if (!selectedRoutine) {
       setStatus('Choose a routine first')
@@ -91,7 +160,7 @@ export default function ParentRoutinesPage() {
 
     if (error) {
       console.error('Add routine step error:', error)
-      setStatus('Could not add routine step')
+      handleMutationError(error, 'Could not add routine step')
       return
     }
 
@@ -192,6 +261,45 @@ export default function ParentRoutinesPage() {
           )}
 
           <section className="mb-6 rounded-3xl bg-white p-6 shadow-sm">
+            <h2 className="mb-2 text-2xl font-semibold">
+              Create a Routine
+            </h2>
+
+            <p className="mb-5 text-sm text-slate-500">
+              Start with a routine such as Morning, After School or Bedtime,
+              then add its individual steps below.
+            </p>
+
+            <div className="grid gap-4 md:grid-cols-[1fr_220px_auto]">
+              <input
+                value={newRoutineTitle}
+                onChange={(event) => setNewRoutineTitle(event.target.value)}
+                className="rounded-2xl border border-slate-200 p-4 text-lg"
+                placeholder="e.g. Morning routine"
+              />
+
+              <select
+                value={newRoutineTime}
+                onChange={(event) => setNewRoutineTime(event.target.value)}
+                className="rounded-2xl border border-slate-200 p-4"
+              >
+                <option value="morning">Morning</option>
+                <option value="afternoon">Afternoon</option>
+                <option value="evening">Evening</option>
+              </select>
+
+              <button
+                type="button"
+                onClick={addRoutine}
+                disabled={addingRoutine}
+                className="rounded-2xl bg-slate-900 px-6 py-4 text-lg font-semibold text-white hover:bg-slate-700 disabled:cursor-wait disabled:opacity-60"
+              >
+                {addingRoutine ? 'Adding...' : 'Create routine'}
+              </button>
+            </div>
+          </section>
+
+          <section className="mb-6 rounded-3xl bg-white p-6 shadow-sm">
             <h2 className="mb-5 text-2xl font-semibold">
               Add Routine Step
             </h2>
@@ -200,8 +308,14 @@ export default function ParentRoutinesPage() {
               <select
                 value={selectedRoutine}
                 onChange={(event) => setSelectedRoutine(event.target.value)}
+                disabled={routines.length === 0}
                 className="rounded-2xl border border-slate-200 p-4"
               >
+                <option value="">
+                  {routines.length === 0
+                    ? 'Create a routine above first'
+                    : 'Choose a routine'}
+                </option>
                 {routines.map((routine) => (
                   <option key={routine.id} value={routine.id}>
                     {routine.title}
@@ -227,6 +341,7 @@ export default function ParentRoutinesPage() {
 
               <button
                 onClick={addRoutineStep}
+                disabled={routines.length === 0}
                 className="rounded-2xl bg-blue-600 p-4 text-lg font-semibold text-white hover:bg-blue-700"
               >
                 Add routine step

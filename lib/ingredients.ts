@@ -300,6 +300,30 @@ export function parseIngredientList(
     )
 }
 
+export function ingredientKey(
+  ingredient: { category: string; item: string }
+) {
+  return `${ingredient.category.trim().toLowerCase()}:${ingredient.item
+    .trim()
+    .toLowerCase()}`
+}
+
+export function countMealsByIngredient(ingredientLists: Array<string | null>) {
+  const counts = new Map<string, number>()
+
+  ingredientLists.forEach((ingredients) => {
+    const ingredientsInMeal = new Set(
+      parseIngredientList(ingredients).map(ingredientKey)
+    )
+
+    ingredientsInMeal.forEach((key) => {
+      counts.set(key, (counts.get(key) || 0) + 1)
+    })
+  })
+
+  return counts
+}
+
 export function ingredientsForEditing(ingredients: string | null) {
   return parseIngredientList(ingredients)
     .map((ingredient) => ingredient.item)
