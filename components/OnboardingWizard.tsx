@@ -603,9 +603,13 @@ function GuidedStageForm({
   onBack: () => void
   onContinue: () => void
 }) {
-  const assignableProfiles = profiles
+  const assignablePeople = profiles
     .map((profile, index) => ({ ...profile, index }))
     .filter((profile) => profile.role !== 'pet')
+  const assignableRoutineProfiles = profiles.map((profile, index) => ({
+    ...profile,
+    index,
+  }))
 
   return (
     <div className="mt-8">
@@ -770,7 +774,7 @@ function GuidedStageForm({
                 aria-label="Assign chore to"
               >
                 <option value={-1}>Leave unassigned</option>
-                {assignableProfiles.map((profile) => (
+                {assignablePeople.map((profile) => (
                   <option key={profile.index} value={profile.index}>
                     {profile.emoji} {profile.name}
                   </option>
@@ -888,8 +892,8 @@ function GuidedStageForm({
                   className="rounded-xl border border-slate-200 bg-white p-3"
                   aria-label="Assign routine to"
                 >
-                  <option value={-1}>Everyone</option>
-                  {assignableProfiles.map((profile) => (
+                  <option value={-1}>Everyone except pets</option>
+                  {assignableRoutineProfiles.map((profile) => (
                     <option key={profile.index} value={profile.index}>
                       {profile.emoji} {profile.name}
                     </option>

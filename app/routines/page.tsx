@@ -16,6 +16,9 @@ export default function RoutinesPage() {
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([])
   const [selectedMember, setSelectedMember] = useState('')
   const [resetKey, setResetKey] = useState(0)
+  const selectedProfile = familyMembers.find(
+    (member) => member.id === selectedMember
+  )
 
   async function loadMembers() {
     const { data, error } = await supabase
@@ -102,7 +105,7 @@ export default function RoutinesPage() {
         <section className="mb-6 rounded-3xl bg-white p-4 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-slate-500">
-              Need to reset today&apos;s routines for this person?
+              Need to reset today&apos;s routines for this family member?
             </p>
 
             <button
@@ -118,6 +121,7 @@ export default function RoutinesPage() {
         <section className="rounded-3xl bg-white p-6 shadow-sm">
           <RoutineSection
             selectedMember={selectedMember}
+            selectedMemberRole={selectedProfile?.role || null}
             resetKey={resetKey}
           />
         </section>

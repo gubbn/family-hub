@@ -18,6 +18,14 @@ type RoutineStep = {
   routine_id: string
   title: string
   step_order: number
+  assigned_to: string | null
+}
+
+type FamilyMember = {
+  id: string
+  name: string
+  role: string | null
+  avatar_emoji: string | null
 }
 
 const routineOrder = ['morning', 'afternoon', 'evening']
@@ -26,10 +34,12 @@ export default function ParentRoutinesPage() {
   const { householdId } = useHousehold()
   const [routines, setRoutines] = useState<Routine[]>([])
   const [steps, setSteps] = useState<RoutineStep[]>([])
+  const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([])
   const [selectedRoutine, setSelectedRoutine] = useState('')
   const [newRoutineTitle, setNewRoutineTitle] = useState('')
   const [newRoutineTime, setNewRoutineTime] = useState('morning')
   const [newStepTitle, setNewStepTitle] = useState('')
+  const [newStepAssignee, setNewStepAssignee] = useState('')
   const [addingRoutine, setAddingRoutine] = useState(false)
   const [status, setStatus] = useState('')
 
@@ -43,9 +53,15 @@ export default function ParentRoutinesPage() {
 
     const { data: stepsData, error: stepsError } = await supabase
       .from('routine_steps')
-      .select('id, routine_id, title, step_order')
+      .select('id, routine_id, title, step_order, assigned_to')
       .eq('household_id', householdId)
       .order('step_order')
+
+    const { data: membersData, error: membersError } = await supabase
+      .from('family_members')
+      .select('id, name, role, avatar_emoji')
+      .eq('household_id', householdId)
+      .order('display_order')
 
     if (routinesError) {
       console.error('Load routines error:', routinesError)
@@ -57,6 +73,11 @@ export default function ParentRoutinesPage() {
       setStatus('Could not load routine steps')
     }
 
+    if (membersError) {
+      console.error('Load family members error:', membersError)
+      setStatus('Could not load family members')
+    }
+
     const safeRoutines = (routinesData || []).sort((a, b) => {
       const aIndex = routineOrder.indexOf(a.time_of_day || '')
       const bIndex = routineOrder.indexOf(b.time_of_day || '')
@@ -66,6 +87,7 @@ export default function ParentRoutinesPage() {
 
     setRoutines(safeRoutines)
     setSteps((stepsData as RoutineStep[]) || [])
+    setFamilyMembers((membersData as FamilyMember[]) || [])
     setSelectedRoutine((current) => current || safeRoutines[0]?.id || '')
   }, [householdId])
 
@@ -163,6 +185,7 @@ export default function ParentRoutinesPage() {
         routine_id: selectedRoutine,
         title: trimmedTitle,
         step_order: nextStepOrder,
+        assigned_to: newStepAssignee || null,
       })
 
     if (error) {
@@ -306,9 +329,14 @@ export default function ParentRoutinesPage() {
           </section>
 
           <section className="mb-6 rounded-3xl bg-white p-6 shadow-sm">
-            <h2 className="mb-5 text-2xl font-semibold">
+            <h2 className="mb-2 text-2xl font-semibold">
               Add Routine Step
             </h2>
+
+            <p className="mb-5 text-sm text-slate-500">
+              Shared steps appear for people only. To build a pet routine,
+              choose that pet for each step you add.
+            </p>
 
             <div className="grid gap-4">
               <select
@@ -335,6 +363,28 @@ export default function ParentRoutinesPage() {
                 className="rounded-2xl border border-slate-200 p-4 text-lg"
                 placeholder="Step title"
               />
+
+              <label className="grid gap-2">
+                <span className="text-sm font-semibold text-slate-600">
+                  Who is this step for?
+                </span>
+                <select
+                  value={newStepAssignee}
+                  onChange={(event) =>
+                    setNewStepAssignee(event.target.value)
+                  }
+                  className="rounded-2xl border border-slate-200 p-4"
+                >
+                  <option value="">Everyone except pets</option>
+                  {familyMembers.map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {member.avatar_emoji || (member.role === 'pet' ? '🐾' : '🙂')}{' '}
+                      {member.name}
+                      {member.role === 'pet' ? ' (pet)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
               <button
                 onClick={addRoutineStep}
@@ -392,6 +442,27 @@ export default function ParentRoutinesPage() {
                               }
                               className="w-full rounded-lg border border-slate-200 bg-white p-2 text-sm font-semibold"
                             />
+
+                            <select
+                              value={step.assigned_to || ''}
+                              onChange={(event) =>
+                                updateRoutineStep(step.id, {
+                                  assigned_to: event.target.value || null,
+                                })
+                              }
+                              className="mt-2 w-full rounded-lg border border-slate-200 bg-white p-2 text-sm"
+                              aria-label={`Who ${step.title} is for`}
+                            >
+                              <option value="">Everyone except pets</option>
+                              {familyMembers.map((member) => (
+                                <option key={member.id} value={member.id}>
+                                  {member.avatar_emoji ||
+                                    (member.role === 'pet' ? '🐾' : '🙂')}{' '}
+                                  {member.name}
+                                  {member.role === 'pet' ? ' (pet)' : ''}
+                                </option>
+                              ))}
+                            </select>
 
                             <div className="mt-3 grid grid-cols-3 gap-2">
                               <button

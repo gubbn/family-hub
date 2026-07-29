@@ -7,6 +7,7 @@ import { useHousehold } from './AuthProvider'
 
 type Props = {
   selectedMember: string
+  selectedMemberRole: string | null
   resetKey?: number
 }
 
@@ -21,6 +22,7 @@ type RoutineStep = {
   routine_id: string
   title: string
   step_order: number
+  assigned_to: string | null
   routines: RoutineInfo | RoutineInfo[] | null
 }
 
@@ -35,7 +37,11 @@ type Streak = {
   best_streak: number
 }
 
-export default function RoutineSection({ selectedMember, resetKey = 0 }: Props) {
+export default function RoutineSection({
+  selectedMember,
+  selectedMemberRole,
+  resetKey = 0,
+}: Props) {
   const { householdId } = useHousehold()
   const [steps, setSteps] = useState<RoutineStep[]>([])
   const [completed, setCompleted] = useState<string[]>([])
@@ -64,7 +70,7 @@ export default function RoutineSection({ selectedMember, resetKey = 0 }: Props) 
           .eq('household_id', householdId),
         supabase
           .from('routine_steps')
-          .select('id, routine_id, title, step_order')
+          .select('id, routine_id, title, step_order, assigned_to')
           .eq('household_id', householdId)
           .order('step_order'),
         supabase
@@ -105,8 +111,15 @@ export default function RoutineSection({ selectedMember, resetKey = 0 }: Props) 
           routine_id: step.routine_id,
           title: step.title,
           step_order: step.step_order,
+          assigned_to: step.assigned_to,
           routines: routinesById.get(step.routine_id) || null,
-        })) || []
+        }))
+          .filter((step) =>
+            selectedMemberRole === 'pet'
+              ? step.assigned_to === selectedMember
+              : step.assigned_to === null ||
+                step.assigned_to === selectedMember
+          ) || []
 
       const safeCompleted =
         completionData?.map(
@@ -128,7 +141,7 @@ export default function RoutineSection({ selectedMember, resetKey = 0 }: Props) 
     } finally {
       setLoading(false)
     }
-  }, [householdId, selectedMember])
+  }, [householdId, selectedMember, selectedMemberRole])
 
   async function toggleRoutineStep(stepId: string) {
     if (!selectedMember) return
