@@ -9,6 +9,7 @@ type FamilyMember = {
   id: string
   name: string
   avatar_emoji: string | null
+  role: string | null
 }
 
 export default function RoutinesPage() {
@@ -19,7 +20,7 @@ export default function RoutinesPage() {
   async function loadMembers() {
     const { data, error } = await supabase
       .from('family_members')
-      .select('id, name, avatar_emoji')
+      .select('id, name, avatar_emoji, role')
       .order('display_order')
 
     if (error) {
@@ -27,7 +28,11 @@ export default function RoutinesPage() {
       return
     }
 
-    const safeMembers = data || []
+    const orderedMembers = (data as FamilyMember[]) || []
+    const safeMembers = [
+      ...orderedMembers.filter((member) => member.role !== 'pet'),
+      ...orderedMembers.filter((member) => member.role === 'pet'),
+    ]
     setFamilyMembers(safeMembers)
 
     setSelectedMember((current) => current || safeMembers[0]?.id || '')

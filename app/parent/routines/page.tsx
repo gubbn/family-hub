@@ -30,7 +30,6 @@ export default function ParentRoutinesPage() {
   const [newRoutineTitle, setNewRoutineTitle] = useState('')
   const [newRoutineTime, setNewRoutineTime] = useState('morning')
   const [newStepTitle, setNewStepTitle] = useState('')
-  const [newStepOrder, setNewStepOrder] = useState('1')
   const [addingRoutine, setAddingRoutine] = useState(false)
   const [status, setStatus] = useState('')
 
@@ -149,13 +148,21 @@ export default function ParentRoutinesPage() {
       return
     }
 
+    const nextStepOrder =
+      Math.max(
+        0,
+        ...steps
+          .filter((step) => step.routine_id === selectedRoutine)
+          .map((step) => step.step_order)
+      ) + 1
+
     const { error } = await supabase
       .from('routine_steps')
       .insert({
         household_id: householdId,
         routine_id: selectedRoutine,
         title: trimmedTitle,
-        step_order: Number(newStepOrder) || 1,
+        step_order: nextStepOrder,
       })
 
     if (error) {
@@ -165,7 +172,6 @@ export default function ParentRoutinesPage() {
     }
 
     setNewStepTitle('')
-    setNewStepOrder('1')
     setStatus('Routine step added')
     await loadData()
   }
@@ -328,15 +334,6 @@ export default function ParentRoutinesPage() {
                 onChange={(event) => setNewStepTitle(event.target.value)}
                 className="rounded-2xl border border-slate-200 p-4 text-lg"
                 placeholder="Step title"
-              />
-
-              <input
-                type="number"
-                min="1"
-                value={newStepOrder}
-                onChange={(event) => setNewStepOrder(event.target.value)}
-                className="rounded-2xl border border-slate-200 p-4"
-                placeholder="Order"
               />
 
               <button

@@ -495,17 +495,17 @@ export default function Home() {
           <h2 className="mb-4 text-xl font-semibold">🎉 Family Wins</h2>
 
           <div className="grid gap-3 md:grid-cols-2">
-            <div className="rounded-xl bg-yellow-50 p-4">
-              <div className="text-sm font-medium text-yellow-700">
-                Current leader
-              </div>
+            {(leaderboard[0]?.total || 0) > 0 && (
+              <div className="rounded-xl bg-yellow-50 p-4">
+                <div className="text-sm font-medium text-yellow-700">
+                  Current leader
+                </div>
 
-              <div className="mt-1 text-lg font-bold">
-                {leaderboard[0]
-                  ? `${leaderboard[0].avatar_emoji || '🙂'} ${leaderboard[0].name} with ${leaderboard[0].total} points`
-                  : 'No points yet'}
+                <div className="mt-1 text-lg font-bold">
+                  {`${leaderboard[0].avatar_emoji || '🙂'} ${leaderboard[0].name} with ${leaderboard[0].total} points`}
+                </div>
               </div>
-            </div>
+            )}
 
             <div className="rounded-xl bg-orange-50 p-4">
               <div className="text-sm font-medium text-orange-700">
