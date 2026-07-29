@@ -45,6 +45,10 @@ function getWeekStartDate() {
   return monday.toISOString().split('T')[0]
 }
 
+function formatPoints(value: number) {
+  return `${value} ${value === 1 ? 'point' : 'points'}`
+}
+
 export default function ChoresPage() {
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([])
   const [chores, setChores] = useState<Chore[]>([])
@@ -363,7 +367,9 @@ export default function ChoresPage() {
                       <div className="text-xl font-medium">{chore.title}</div>
 
                       <div className="mt-1 flex flex-wrap gap-2 text-sm text-slate-500">
-                        <span>{chore.points} points</span>
+                        <span className="rounded-full bg-yellow-100 px-2 py-1 font-semibold text-yellow-800">
+                          ⭐ {formatPoints(chore.points)}
+                        </span>
                         <span>•</span>
                         <span>{chore.frequency || 'daily'}</span>
                         {chore.shared_completion && (

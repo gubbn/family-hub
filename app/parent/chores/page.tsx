@@ -233,9 +233,13 @@ export default function ParentChoresPage() {
           )}
 
           <section className="mb-6 rounded-3xl bg-white p-6 shadow-sm">
-            <h2 className="mb-5 text-2xl font-semibold">
+            <h2 className="mb-2 text-2xl font-semibold">
               Add Chore
             </h2>
+
+            <p className="mb-5 text-sm text-slate-500">
+              Set how many points someone scores when they complete this chore.
+            </p>
 
             <div className="grid gap-4">
               <input
@@ -246,14 +250,19 @@ export default function ParentChoresPage() {
               />
 
               <div className="grid gap-4 md:grid-cols-3">
-                <input
-                  type="number"
-                  min="1"
-                  value={newChorePoints}
-                  onChange={(event) => setNewChorePoints(event.target.value)}
-                  className="rounded-2xl border border-slate-200 p-4 text-lg"
-                  placeholder="Points"
-                />
+                <label className="rounded-2xl border border-slate-200 bg-white px-4 py-2">
+                  <span className="block text-xs font-semibold text-slate-500">
+                    Points scored
+                  </span>
+                  <input
+                    type="number"
+                    min="1"
+                    value={newChorePoints}
+                    onChange={(event) => setNewChorePoints(event.target.value)}
+                    className="w-full bg-transparent py-1 text-lg outline-none"
+                    aria-label="Points scored for completing this chore"
+                  />
+                </label>
 
                 <select
                   value={newFrequency}
@@ -326,7 +335,7 @@ export default function ParentChoresPage() {
                   key={chore.id}
                   className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
                 >
-                  <div className="mb-4 grid gap-3 md:grid-cols-[1fr_120px_160px_160px_auto]">
+                  <div className="mb-4 grid gap-3 md:grid-cols-[1fr_150px_160px_160px_auto]">
                     <input
                       value={chore.title}
                       onChange={(event) =>
@@ -337,17 +346,23 @@ export default function ParentChoresPage() {
                       className="rounded-xl border border-slate-200 bg-white p-3"
                     />
 
-                    <input
-                      type="number"
-                      min="1"
-                      value={chore.points}
-                      onChange={(event) =>
-                        updateChore(chore.id, {
-                          points: Number(event.target.value) || 1,
-                        })
-                      }
-                      className="rounded-xl border border-slate-200 bg-white p-3"
-                    />
+                    <label className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                      <span className="block text-xs font-semibold text-slate-500">
+                        Points scored
+                      </span>
+                      <input
+                        type="number"
+                        min="1"
+                        value={chore.points}
+                        onChange={(event) =>
+                          updateChore(chore.id, {
+                            points: Number(event.target.value) || 1,
+                          })
+                        }
+                        className="w-full bg-transparent outline-none"
+                        aria-label={`Points scored for ${chore.title}`}
+                      />
+                    </label>
 
                     <select
                       value={chore.frequency || 'daily'}

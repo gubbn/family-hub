@@ -34,6 +34,11 @@ type ShoppingItem = {
   completed: boolean
 }
 
+type ShoppingItemCheck = {
+  item_key: string
+  completed: boolean
+}
+
 type ParsedIngredient = {
   category: string
   item: string
@@ -57,6 +62,9 @@ export default function ParentShoppingPage() {
   const { householdId } = useHousehold()
   const [mealPlan, setMealPlan] = useState<MealPlanItem[]>([])
   const [manualItems, setManualItems] = useState<ShoppingItem[]>([])
+  const [mealItemChecks, setMealItemChecks] = useState<Record<string, boolean>>(
+    {}
+  )
   const [newItem, setNewItem] = useState('')
   const [loading, setLoading] = useState(true)
   const [addingItem, setAddingItem] = useState(false)
@@ -88,6 +96,11 @@ export default function ParentShoppingPage() {
       .eq('household_id', householdId)
       .order('created_at', { ascending: true })
 
+    const { data: checksData, error: checksError } = await supabase
+      .from('shopping_item_checks')
+      .select('item_key, completed')
+      .eq('household_id', householdId)
+
     if (planError || mealsError) {
       console.error('Load shopping list error:', planError)
       if (mealsError) console.error('Load meals error:', mealsError)
@@ -103,6 +116,21 @@ export default function ParentShoppingPage() {
       setManualItems([])
     } else {
       setManualItems((itemsData as ShoppingItem[]) || [])
+    }
+
+    if (checksError) {
+      console.error('Load meal shopping checks error:', checksError)
+      setMealItemChecks({})
+    } else {
+      setMealItemChecks(
+        ((checksData as ShoppingItemCheck[]) || []).reduce(
+          (checks, item) => {
+            checks[item.item_key] = item.completed
+            return checks
+          },
+          {} as Record<string, boolean>
+        )
+      )
     }
 
     setLoading(false)
@@ -164,6 +192,10 @@ export default function ParentShoppingPage() {
           uniqueItems.set(key, {
             ...ingredient,
             mealCount: mealCountsByIngredient.get(key) || 0,
+            completed:
+              ingredient.source === 'meal'
+                ? mealItemChecks[key] || false
+                : ingredient.completed,
           })
         }
 
@@ -238,6 +270,40 @@ export default function ParentShoppingPage() {
     }
 
     await loadShoppingList()
+  }
+
+  async function toggleMealItem(
+    ingredient: ParsedIngredient,
+    completed: boolean
+  ) {
+    if (!householdId) return
+
+    const key = ingredientKey(ingredient)
+    const nextCompleted = !completed
+
+    setMealItemChecks((current) => ({
+      ...current,
+      [key]: nextCompleted,
+    }))
+
+    const { error } = await supabase.from('shopping_item_checks').upsert(
+      {
+        household_id: householdId,
+        item_key: key,
+        completed: nextCompleted,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'household_id,item_key' }
+    )
+
+    if (error) {
+      console.error('Toggle meal shopping item error:', error)
+      setMealItemChecks((current) => ({
+        ...current,
+        [key]: completed,
+      }))
+      handleShoppingMutationError(error, 'Could not update item')
+    }
   }
 
   async function deleteManualItem(itemId: string) {
@@ -383,13 +449,15 @@ export default function ParentShoppingPage() {
                               <input
   type="checkbox"
   className="h-5 w-5"
-  defaultChecked={ingredient.completed || false}
+  checked={ingredient.completed || false}
   onChange={() => {
     if (isManual && ingredient.id) {
       toggleManualItem(
         ingredient.id,
         ingredient.completed || false
       )
+    } else {
+      toggleMealItem(ingredient, ingredient.completed || false)
     }
   }}
 />
