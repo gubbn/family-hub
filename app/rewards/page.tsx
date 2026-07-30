@@ -193,23 +193,29 @@ export default function RewardsPage() {
               return (
                 <article
                   key={reward.id}
-                  className="rounded-3xl bg-white p-6 shadow-sm"
+                  className="flex h-full flex-col rounded-3xl bg-white p-6 shadow-sm"
                 >
-                  <div className="text-5xl">{reward.emoji}</div>
-                  <h2 className="mt-4 text-2xl font-semibold">{reward.name}</h2>
-                  {reward.description && (
-                    <p className="mt-2 text-sm text-slate-600">
-                      {reward.description}
-                    </p>
-                  )}
-                  <p className="mt-4 text-xl font-bold text-purple-700">
+                  <div className="flex h-14 items-center text-5xl">
+                    {reward.emoji}
+                  </div>
+                  <div className="mt-4 flex-1">
+                    <h2 className="text-2xl font-semibold leading-tight">
+                      {reward.name}
+                    </h2>
+                    {reward.description && (
+                      <p className="mt-2 text-sm text-slate-600">
+                        {reward.description}
+                      </p>
+                    )}
+                  </div>
+                  <p className="mt-5 text-xl font-bold text-purple-700">
                     ⭐ {reward.points_cost} points
                   </p>
                   <button
                     type="button"
                     disabled={!selectedMember || !canAfford || pending}
                     onClick={() => void requestReward(reward)}
-                    className="mt-5 w-full rounded-2xl bg-purple-600 px-5 py-3 font-semibold text-white hover:bg-purple-700 disabled:bg-slate-300"
+                    className="mt-4 min-h-12 w-full rounded-2xl bg-purple-600 px-5 py-3 font-semibold text-white hover:bg-purple-700 disabled:bg-slate-300"
                   >
                     {pending
                       ? 'Waiting for a parent'

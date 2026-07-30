@@ -357,7 +357,7 @@ export default function OnboardingWizard({
 
             <p className="mx-auto mt-6 max-w-xl text-slate-600">
               Think of it as your family planner, boredom buster and helpful
-              little memory—all in one place.
+              little memory all in one place.
             </p>
 
             <button

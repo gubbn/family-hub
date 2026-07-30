@@ -129,13 +129,16 @@ export default function AuthProvider({
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       const nextUser = session?.user || null
-      setUser(nextUser)
 
       if (!nextUser) {
+        setUser(null)
         setMembership(null)
         setLoading(false)
         return
       }
+
+      setLoading(true)
+      setUser(nextUser)
 
       setTimeout(() => {
         void loadMembership(nextUser).finally(() => setLoading(false))
@@ -212,6 +215,7 @@ export default function AuthProvider({
 }
 
 function SignInScreen() {
+  const [mode, setMode] = useState<'login' | 'signup'>('login')
   const [email, setEmail] = useState('')
   const [codeSent, setCodeSent] = useState(false)
   const [sentEmail, setSentEmail] = useState('')
@@ -219,6 +223,20 @@ function SignInScreen() {
   const [sending, setSending] = useState(false)
   const [verifying, setVerifying] = useState(false)
   const [message, setMessage] = useState('')
+  const [needsSignup, setNeedsSignup] = useState(false)
+
+  function changeMode(
+    nextMode: 'login' | 'signup',
+    keepEmail = false,
+  ) {
+    setMode(nextMode)
+    if (!keepEmail) setEmail('')
+    setCode('')
+    setSentEmail('')
+    setCodeSent(false)
+    setMessage('')
+    setNeedsSignup(false)
+  }
 
   async function requestSignInEmail() {
     const cleanEmail = email.trim().toLowerCase()
@@ -230,12 +248,12 @@ function SignInScreen() {
 
     setSending(true)
     setMessage('')
+    setNeedsSignup(false)
 
     const { error } = await supabase.auth.signInWithOtp({
       email: cleanEmail,
       options: {
-        emailRedirectTo: window.location.origin,
-        shouldCreateUser: true,
+        shouldCreateUser: mode === 'signup',
       },
     })
 
@@ -243,13 +261,31 @@ function SignInScreen() {
 
     if (error) {
       console.error('Email code request error:', error)
-      setMessage(error.message)
+
+      if (
+        mode === 'login' &&
+        error.message.toLowerCase().includes('signups not allowed for otp')
+      ) {
+        setNeedsSignup(true)
+        setMessage(
+          'We could not find a Family Hub account for that email address.',
+        )
+        return
+      }
+
+      setMessage(
+        mode === 'login'
+          ? 'We could not send your login code. Please try again.'
+          : 'We could not start your sign-up. Please try again.',
+      )
       return
     }
 
     setSentEmail(cleanEmail)
     setCodeSent(true)
-    setMessage('Code sent. Check your email for your one-time sign-in code.')
+    setMessage(
+      `Code sent. Check your email for your one-time ${mode === 'login' ? 'login' : 'sign-up'} code.`,
+    )
   }
 
   async function sendSignInEmail(event: React.FormEvent) {
@@ -292,17 +328,47 @@ function SignInScreen() {
     <main className="grid min-h-screen place-items-center bg-slate-100 p-6 text-slate-900">
       <section className="w-full max-w-lg rounded-3xl bg-white p-8 shadow-sm">
         <div className="mb-4 text-5xl">🏡</div>
-        <h1 className="text-3xl font-bold">Welcome to Family Hub</h1>
+        <h1 className="text-3xl font-bold">
+          {mode === 'login' ? 'Welcome back' : 'Create your Family Hub'}
+        </h1>
         <p className="mt-3 text-slate-600">
-          We&apos;ll email you a six-digit one-time code. There&apos;s no
-          password to remember and no link to open.
+          {mode === 'login'
+            ? 'Log in to open your existing family space.'
+            : 'Think of it as your family planner, boredom buster and helpful little memory all in one place.'}
         </p>
+
+        <div className="mt-6 grid grid-cols-2 rounded-2xl bg-slate-100 p-1">
+          <button
+            type="button"
+            onClick={() => changeMode('login')}
+            aria-pressed={mode === 'login'}
+            className={`rounded-xl px-4 py-3 font-semibold ${
+              mode === 'login'
+                ? 'bg-white text-blue-700 shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            Log in
+          </button>
+          <button
+            type="button"
+            onClick={() => changeMode('signup')}
+            aria-pressed={mode === 'signup'}
+            className={`rounded-xl px-4 py-3 font-semibold ${
+              mode === 'signup'
+                ? 'bg-white text-blue-700 shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            Sign up
+          </button>
+        </div>
 
         {!codeSent ? (
           <>
             <p className="mt-6 rounded-2xl bg-blue-50 p-4 text-sm text-blue-900">
-              🔢 Open the email on this device or another one, then type the
-              code into Family Hub.
+              🔢 We&apos;ll email you a six-digit one-time code. Open it on
+              this device or another one, then type the code into Family Hub.
             </p>
 
             <form onSubmit={sendSignInEmail} className="mt-5 space-y-4">
@@ -326,9 +392,29 @@ function SignInScreen() {
                 disabled={sending}
                 className="w-full rounded-2xl bg-blue-600 px-6 py-4 font-semibold text-white hover:bg-blue-700 disabled:bg-slate-400"
               >
-                {sending ? 'Sending…' : 'Send my 6-digit code'}
+                {sending
+                  ? 'Sending…'
+                  : mode === 'login'
+                    ? 'Send my login code'
+                    : 'Send my sign-up code'}
               </button>
             </form>
+
+            {needsSignup ? (
+              <div
+                role="status"
+                className="mt-4 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950"
+              >
+                <p>{message}</p>
+                <button
+                  type="button"
+                  onClick={() => changeMode('signup', true)}
+                  className="mt-3 font-bold text-blue-700 underline underline-offset-2"
+                >
+                  Sign up with this email
+                </button>
+              </div>
+            ) : null}
           </>
         ) : (
           <div className="mt-6">
@@ -395,7 +481,7 @@ function SignInScreen() {
           </div>
         )}
 
-        {message && (
+        {message && !needsSignup && (
           <p role="status" className="mt-4 rounded-2xl bg-blue-50 p-4 text-sm">
             {message}
           </p>
