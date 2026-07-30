@@ -207,11 +207,15 @@ export default function AuthProvider({
 
 function SignInScreen() {
   const [email, setEmail] = useState('')
+  const [method, setMethod] = useState<'link' | 'code'>('link')
+  const [codeSent, setCodeSent] = useState(false)
+  const [sentEmail, setSentEmail] = useState('')
+  const [code, setCode] = useState('')
   const [sending, setSending] = useState(false)
+  const [verifying, setVerifying] = useState(false)
   const [message, setMessage] = useState('')
 
-  async function sendMagicLink(event: React.FormEvent) {
-    event.preventDefault()
+  async function requestSignInEmail() {
     const cleanEmail = email.trim().toLowerCase()
 
     if (!cleanEmail) {
@@ -226,6 +230,7 @@ function SignInScreen() {
       email: cleanEmail,
       options: {
         emailRedirectTo: window.location.origin,
+        shouldCreateUser: method === 'link',
       },
     })
 
@@ -237,7 +242,60 @@ function SignInScreen() {
       return
     }
 
+    if (method === 'code') {
+      setSentEmail(cleanEmail)
+      setCodeSent(true)
+      setMessage(
+        'Code sent. Ask the parent to check their email on another device.'
+      )
+      return
+    }
+
     setMessage('Check your email for your secure sign-in link.')
+  }
+
+  async function sendSignInEmail(event: React.FormEvent) {
+    event.preventDefault()
+    await requestSignInEmail()
+  }
+
+  async function verifyCode(event: React.FormEvent) {
+    event.preventDefault()
+    const cleanCode = code.replace(/\D/g, '')
+
+    if (cleanCode.length !== 6) {
+      setMessage('Enter the full six-digit code from the email.')
+      return
+    }
+
+    setVerifying(true)
+    setMessage('')
+
+    const { error } = await supabase.auth.verifyOtp({
+      email: sentEmail,
+      token: cleanCode,
+      type: 'email',
+    })
+
+    setVerifying(false)
+
+    if (error) {
+      console.error('Email code verification error:', error)
+      setMessage(
+        'That code is incorrect or has expired. Check the email or request a new code.'
+      )
+      return
+    }
+
+    setMessage('Code accepted. Opening your Family Hub…')
+  }
+
+  function changeMethod(nextMethod: 'link' | 'code') {
+    setMethod(nextMethod)
+    setCodeSent(false)
+    setSentEmail('')
+    setCode('')
+    setMessage('')
   }
 
   return (
@@ -246,32 +304,136 @@ function SignInScreen() {
         <div className="mb-4 text-5xl">🏡</div>
         <h1 className="text-3xl font-bold">Welcome to Family Hub</h1>
         <p className="mt-3 text-slate-600">
-          Sign in as a parent or carer. We&apos;ll email you a secure one-time
-          link, so there&apos;s no password to remember.
+          Choose the easiest way to sign in. There&apos;s no password to
+          remember.
         </p>
 
-        <form onSubmit={sendMagicLink} className="mt-6 space-y-4">
-          <label className="block">
-            <span className="mb-2 block text-sm font-medium">Email address</span>
-            <input
-              type="email"
-              autoComplete="email"
-              required
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              className="w-full rounded-2xl border border-slate-300 p-4"
-              placeholder="you@example.com"
-            />
-          </label>
+        {!codeSent ? (
+          <>
+            <div className="mt-6 grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => changeMethod('link')}
+                className={`rounded-2xl p-4 text-left text-sm font-semibold ${
+                  method === 'link'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-slate-100 text-slate-700'
+                }`}
+              >
+                ✉️ Email sign-in link
+              </button>
+              <button
+                type="button"
+                onClick={() => changeMethod('code')}
+                className={`rounded-2xl p-4 text-left text-sm font-semibold ${
+                  method === 'code'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-slate-100 text-slate-700'
+                }`}
+              >
+                🔢 Use a 6-digit code
+              </button>
+            </div>
 
-          <button
-            type="submit"
-            disabled={sending}
-            className="w-full rounded-2xl bg-blue-600 px-6 py-4 font-semibold text-white hover:bg-blue-700 disabled:bg-slate-400"
-          >
-            {sending ? 'Sending link...' : 'Email me a sign-in link'}
-          </button>
-        </form>
+            <p className="mt-4 rounded-2xl bg-blue-50 p-4 text-sm text-blue-900">
+              {method === 'link'
+                ? 'Best when you can open email on this device.'
+                : 'Best for a child or shared device. The parent opens the email somewhere else and tells you the code.'}
+            </p>
+
+            <form onSubmit={sendSignInEmail} className="mt-5 space-y-4">
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium">
+                  Parent&apos;s email address
+                </span>
+                <input
+                  type="email"
+                  autoComplete="email"
+                  required
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  className="w-full rounded-2xl border border-slate-300 p-4"
+                  placeholder="you@example.com"
+                />
+              </label>
+
+              <button
+                type="submit"
+                disabled={sending}
+                className="w-full rounded-2xl bg-blue-600 px-6 py-4 font-semibold text-white hover:bg-blue-700 disabled:bg-slate-400"
+              >
+                {sending
+                  ? 'Sending…'
+                  : method === 'code'
+                    ? 'Send my 6-digit code'
+                    : 'Email me a sign-in link'}
+              </button>
+            </form>
+          </>
+        ) : (
+          <div className="mt-6">
+            <div className="rounded-2xl bg-blue-50 p-4 text-sm text-blue-900">
+              <p className="font-semibold">Code sent to {sentEmail}</p>
+              <p className="mt-1">
+                Ask the parent to open the email on their phone or another
+                device, then enter the six-digit code below.
+              </p>
+            </div>
+
+            <form onSubmit={verifyCode} className="mt-5 space-y-4">
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium">
+                  Six-digit code
+                </span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  pattern="[0-9]{6}"
+                  maxLength={6}
+                  required
+                  value={code}
+                  onChange={(event) =>
+                    setCode(event.target.value.replace(/\D/g, '').slice(0, 6))
+                  }
+                  className="w-full rounded-2xl border border-slate-300 p-4 text-center text-3xl font-bold tracking-[0.35em]"
+                  placeholder="000000"
+                  aria-label="Six-digit sign-in code"
+                />
+              </label>
+
+              <button
+                type="submit"
+                disabled={verifying}
+                className="w-full rounded-2xl bg-blue-600 px-6 py-4 font-semibold text-white hover:bg-blue-700 disabled:bg-slate-400"
+              >
+                {verifying ? 'Checking code…' : 'Open Family Hub'}
+              </button>
+            </form>
+
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm">
+              <button
+                type="button"
+                onClick={() => {
+                  setCode('')
+                  setMessage('')
+                  setCodeSent(false)
+                }}
+                className="text-slate-600 underline"
+              >
+                Change email
+              </button>
+              <button
+                type="button"
+                disabled={sending}
+                onClick={() => void requestSignInEmail()}
+                className="font-medium text-blue-700 underline disabled:text-slate-400"
+              >
+                Send a new code
+              </button>
+            </div>
+          </div>
+        )}
 
         {message && (
           <p role="status" className="mt-4 rounded-2xl bg-blue-50 p-4 text-sm">

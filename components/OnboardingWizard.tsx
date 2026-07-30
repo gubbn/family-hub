@@ -134,7 +134,7 @@ export default function OnboardingWizard({
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
 
-  const finalStep = setupSteps.length + 2
+  const finalStep = setupSteps.length + 3
 
   function updateProfile(index: number, updates: Partial<Profile>) {
     setProfiles((current) =>
@@ -176,7 +176,7 @@ export default function OnboardingWizard({
       `${compactPostcode.slice(0, -3)} ${compactPostcode.slice(-3)}`
     )
     setMessage('')
-    setStep(1)
+    setStep(2)
   }
 
   function continueProfiles() {
@@ -186,7 +186,7 @@ export default function OnboardingWizard({
     }
 
     setMessage('')
-    setStep(2)
+    setStep(3)
   }
 
   function continueConfiguredStage(stageKey: keyof SetupChoices) {
@@ -310,6 +310,67 @@ export default function OnboardingWizard({
         </div>
 
         {step === 0 && (
+          <div className="text-center">
+            <div className="text-7xl" aria-hidden="true">
+              👋
+            </div>
+            <h1 className="mt-5 text-4xl font-bold tracking-tight">
+              Hello! Welcome to your Family Hub
+            </h1>
+            <p className="mx-auto mt-4 max-w-xl text-lg text-slate-600">
+              Family life is busy. Your hub is here to take some of the stress
+              out of everyday family admin and turn the things that need doing
+              into something everyone can enjoy.
+            </p>
+
+            <div className="mt-7 grid gap-3 text-left sm:grid-cols-3">
+              <div className="rounded-2xl bg-blue-50 p-4">
+                <div className="text-3xl" aria-hidden="true">
+                  📅
+                </div>
+                <h2 className="mt-2 font-bold text-blue-950">Plan it</h2>
+                <p className="mt-1 text-sm text-blue-900">
+                  Keep meals, routines and family plans together.
+                </p>
+              </div>
+              <div className="rounded-2xl bg-amber-50 p-4">
+                <div className="text-3xl" aria-hidden="true">
+                  ✅
+                </div>
+                <h2 className="mt-2 font-bold text-amber-950">Tick it off</h2>
+                <p className="mt-1 text-sm text-amber-900">
+                  Make everyday jobs feel clear, manageable and satisfying.
+                </p>
+              </div>
+              <div className="rounded-2xl bg-green-50 p-4">
+                <div className="text-3xl" aria-hidden="true">
+                  ⭐
+                </div>
+                <h2 className="mt-2 font-bold text-green-950">
+                  Score and celebrate
+                </h2>
+                <p className="mt-1 text-sm text-green-900">
+                  Earn points for chores and work towards family rewards.
+                </p>
+              </div>
+            </div>
+
+            <p className="mx-auto mt-6 max-w-xl text-slate-600">
+              Think of it as your family planner, boredom buster and helpful
+              little memory—all in one place.
+            </p>
+
+            <button
+              type="button"
+              onClick={() => setStep(1)}
+              className="mt-8 w-full rounded-2xl bg-blue-600 px-6 py-4 font-semibold text-white hover:bg-blue-700"
+            >
+              Let&apos;s set up our hub
+            </button>
+          </div>
+        )}
+
+        {step === 1 && (
           <div>
             <div className="text-6xl">🏡</div>
             <h1 className="mt-4 text-3xl font-bold">
@@ -348,7 +409,7 @@ export default function OnboardingWizard({
           </div>
         )}
 
-        {step === 1 && (
+        {step === 2 && (
           <div>
             <h1 className="text-3xl font-bold">Who belongs in your hub?</h1>
             <p className="mt-3 text-slate-600">
@@ -458,15 +519,15 @@ export default function OnboardingWizard({
             </div>
 
             <WizardNavigation
-              onBack={() => setStep(0)}
+              onBack={() => setStep(1)}
               onNext={continueProfiles}
               nextLabel="Continue"
             />
           </div>
         )}
 
-        {step >= 2 && step < finalStep && (() => {
-          const setupStep = setupSteps[step - 2]
+        {step >= 3 && step < finalStep && (() => {
+          const setupStep = setupSteps[step - 3]
 
           return (
             <div>
