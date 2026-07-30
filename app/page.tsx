@@ -73,8 +73,17 @@ type RoutineStreakLeader = {
   streakTotal: number
 }
 
-function getTodayDate() {
-  return new Date().toISOString().split('T')[0]
+function getTodayBounds() {
+  const start = new Date()
+  start.setHours(0, 0, 0, 0)
+
+  const end = new Date(start)
+  end.setDate(start.getDate() + 1)
+
+  return {
+    start: start.toISOString(),
+    end: end.toISOString(),
+  }
 }
 
 function getWeekStartDate() {
@@ -262,6 +271,35 @@ export default function Home() {
       .sort((a, b) => b.total - a.total)
   }, [familyMembers, points])
 
+  const dailyLeaderboard = useMemo(() => {
+    const { start, end } = getTodayBounds()
+    const totals = new Map<string, number>()
+
+    choreCompletions.forEach((completion) => {
+      if (
+        !completion.completed_by ||
+        !completion.completed_at ||
+        completion.completed_at < start ||
+        completion.completed_at >= end
+      ) {
+        return
+      }
+
+      totals.set(
+        completion.completed_by,
+        (totals.get(completion.completed_by) || 0) +
+          completion.points_awarded
+      )
+    })
+
+    return familyMembers
+      .map((member) => ({
+        ...member,
+        total: totals.get(member.id) || 0,
+      }))
+      .sort((a, b) => b.total - a.total)
+  }, [choreCompletions, familyMembers])
+
   const routineStreakLeaders = useMemo(() => {
     const totals = new Map<string, number>()
 
@@ -298,7 +336,7 @@ export default function Home() {
   }, [routineStreakLeaders])
 
   const choreSummary = useMemo(() => {
-    const today = getTodayDate()
+    const { start: today, end: tomorrow } = getTodayBounds()
     const weekStart = getWeekStartDate()
     const uniqueChores = new Map<string, DashboardChore>()
 
@@ -317,7 +355,10 @@ export default function Home() {
     const chores = Array.from(uniqueChores.values())
 
     const completedToday = choreCompletions.filter(
-      (completion) => completion.completed_at && completion.completed_at >= today
+      (completion) =>
+        completion.completed_at &&
+        completion.completed_at >= today &&
+        completion.completed_at < tomorrow
     )
 
     const pointsToday = completedToday.reduce((total, completion) => {
@@ -333,7 +374,10 @@ export default function Home() {
 
       if (frequency === 'daily') {
         return !relevantCompletions.some(
-          (completion) => completion.completed_at && completion.completed_at >= today
+          (completion) =>
+            completion.completed_at &&
+            completion.completed_at >= today &&
+            completion.completed_at < tomorrow
         )
       }
 
@@ -495,14 +539,14 @@ export default function Home() {
           <h2 className="mb-4 text-xl font-semibold">🎉 Family Wins</h2>
 
           <div className="grid gap-3 md:grid-cols-2">
-            {(leaderboard[0]?.total || 0) > 0 && (
+            {(dailyLeaderboard[0]?.total || 0) > 0 && (
               <div className="rounded-xl bg-yellow-50 p-4">
                 <div className="text-sm font-medium text-yellow-700">
-                  Current leader
+                  Today&apos;s points leader
                 </div>
 
                 <div className="mt-1 text-lg font-bold">
-                  {`${leaderboard[0].avatar_emoji || '🙂'} ${leaderboard[0].name} with ${leaderboard[0].total} points`}
+                  {`${dailyLeaderboard[0].avatar_emoji || '🙂'} ${dailyLeaderboard[0].name} with ${dailyLeaderboard[0].total} points today`}
                 </div>
               </div>
             )}
