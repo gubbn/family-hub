@@ -1,6 +1,7 @@
 'use client'
 
 import type { User } from '@supabase/supabase-js'
+import { usePathname } from 'next/navigation'
 import {
   createContext,
   useCallback,
@@ -45,6 +46,7 @@ export default function AuthProvider({
 }: {
   children: React.ReactNode
 }) {
+  const pathname = usePathname()
   const [user, setUser] = useState<User | null>(null)
   const [membership, setMembership] = useState<HouseholdMembership | null>(null)
   const [loading, setLoading] = useState(true)
@@ -160,6 +162,10 @@ export default function AuthProvider({
       },
     }
   }, [membership, refreshHousehold, user])
+
+  if (pathname === '/status') {
+    return children
+  }
 
   if (loading) {
     return (
